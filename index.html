@@ -321,7 +321,7 @@ const SEASON_DATA = {
       { rank:3, team:'두산 베어스', g:7, w:5, l:2, pct:'.714', gb:'0.5' },
       { rank:4, team:'한화 이글스', g:6, w:4, l:2, pct:'.667', gb:'1.0' },
       { rank:5, team:'SSG 랜더스', g:7, w:3, l:3, pct:'.500', gb:'2.0' },
-      { rank:6, team:'삼성 라이온즈', g:6, w:3, l:3, pct:'.500', gb:'2.0' },
+      { rank:5, team:'삼성 라이온즈', g:6, w:3, l:3, pct:'.500', gb:'2.0' },
       { rank:7, team:'NC 다이노스', g:6, w:2, l:3, pct:'.400', gb:'2.5' },
       { rank:8, team:'KIA 타이거즈', g:7, w:2, l:4, pct:'.333', gb:'3.0', kia:true },
       { rank:9, team:'키움 히어로즈', g:6, w:1, l:5, pct:'.167', gb:'4.0' },
@@ -476,12 +476,20 @@ function renderKiaStats(){
 
 function renderStandings(){
   const tbody = document.getElementById('standingsTbody');
-  tbody.innerHTML = getData().standings.map(t => `
+  const standings = getData().standings;
+  // 공동 순위 체크: 같은 rank면 앞에 '공동' 표시
+  const rankCount = {};
+  standings.forEach(t => { rankCount[t.rank] = (rankCount[t.rank]||0) + 1; });
+  tbody.innerHTML = standings.map(t => {
+    const isTie = rankCount[t.rank] > 1;
+    const rankLabel = isTie ? `<span style="font-size:10px;color:var(--muted)">공동</span><br>${t.rank}` : t.rank;
+    return `
     <tr class="${t.kia?'kia-row':''}">
-      <td><span class="rank-num ${t.rank<=3?'top':''}">${t.rank}</span></td>
+      <td><span class="rank-num ${t.rank<=3?'top':''}" style="line-height:1.2">${rankLabel}</span></td>
       <td>${t.kia?'<span class="team-dot"></span>':''}${t.team}</td>
       <td>${t.g}</td><td>${t.w}</td><td>${t.l}</td><td>${t.pct}</td><td>${t.gb}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 function renderBatters(){
