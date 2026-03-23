@@ -599,13 +599,16 @@ function renderPlayerStats(){
       </table>`;
   } else {
     container.innerHTML = `
-      <table class="player-table">
-        <thead><tr><th>선수</th><th>번호</th><th>포지션</th><th>ERA</th><th>승</th><th>패</th><th>세이브</th><th>WHIP</th></tr></thead>
+      <table class="player-table" style="table-layout:fixed;width:100%">
+        <thead><tr>
+          <th style="width:70px">선수</th><th style="width:40px">번호</th><th style="width:60px">포지션</th>
+          <th>ERA</th><th>승</th><th>패</th><th>세이브</th><th>WHIP</th>
+        </tr></thead>
         <tbody>${getData().kiaPitchers.map(p=>`
           <tr>
-            <td style="color:var(--kia-red);font-weight:500">${p.name}</td>
+            <td style="color:var(--kia-red);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</td>
             <td style="color:var(--muted)">#${p.num}</td>
-            <td style="color:var(--muted);font-size:11px">${p.pos}</td>
+            <td style="color:var(--muted);font-size:11px;white-space:nowrap">${p.pos}</td>
             <td><strong>${p.era}</strong></td>
             <td>${p.w}</td><td>${p.l}</td><td>${p.sv}</td>
             <td style="color:#fbbf24">${p.whip}</td>
