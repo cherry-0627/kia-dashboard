@@ -327,7 +327,7 @@ const SEASON_DATA = {
       { date: '03.20(목)', opp: 'vs 한화', score: '8-13', result: 'lose', venue: '대전' },
       { date: '03.21(금)', opp: 'vs 두산', score: '11-6', result: 'win', venue: '잠실' },
       { date: '03.22(토)', opp: 'vs 두산', score: '0-0', result: 'draw', venue: '잠실' },
-      { date: '03.23(일)', opp: 'vs 삼성', score: '미완료', result: 'upcoming', venue: '대구', fullDate: '2026-03-23T13:00:00' },
+      { date: '03.23(일)', opp: 'vs 삼성', score: '1-7', result: 'lose', venue: '대구' },
       { date: '03.24(월)', opp: 'vs 삼성', score: '미완료', result: 'upcoming', venue: '대구', fullDate: '2026-03-24T13:00:00' },
     ],
     kiaStats: { rank: '9위', record: '4 / 2 / 5', winrate: '.444', avg: '.254', avgRank: '-', era: '5.42', eraRank: '-', label: '시범경기 성적' },
@@ -802,7 +802,7 @@ function renderAll(){
   const now = new Date();
   document.getElementById('lastUpdate').textContent =
     '마지막 업데이트: ' + now.getFullYear() + '.' + pad(now.getMonth()+1) + '.' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
-  document.getElementById('headerDate').textContent = '2026 KBO 리그 · 2026.03.23 기준';
+  document.getElementById('headerDate').textContent = '2026 KBO 리그 · 개막 D-8 · 2026.03.20 기준';
 }
 
 // 초기 실행
