@@ -134,7 +134,7 @@ def build_html(standings, games):
         s_json = json.dumps(standings, ensure_ascii=False)
         # regular: { ... standings: [...], 패턴
         new_html = re.sub(
-            r'(regular:\s*\{[\s\S]{0,500}?standings:\s*)\[[\s\S]*?\],',
+            r'(regular:\s*\{[\s\S]{0,800}?standings:\s*)\[[\s\S]*?\],',
             r'\g<1>' + s_json + ',',
             html, count=1
         )
@@ -148,7 +148,7 @@ def build_html(standings, games):
         recent = games[-10:]
         g_json = json.dumps(recent, ensure_ascii=False)
         new_html = re.sub(
-            r'(regular:\s*\{[\s\S]{0,100}?recentGames:\s*)\[[\s\S]*?\],',
+            r'(regular:\s*\{[\s\S]{0,200}?recentGames:\s*)\[[\s\S]*?\],',
             r'\g<1>' + g_json + ',',
             html, count=1
         )
