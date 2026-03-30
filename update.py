@@ -15,21 +15,15 @@ TEAM_ENG_KOR = {
     'KT': 'KT 위즈', 'LOTTE': '롯데 자이언츠', 'DOOSAN': '두산 베어스',
     'KIWOOM': '키움 히어로즈'
 }
-
 DAY_MAP = {'MON':'월','TUE':'화','WED':'수','THU':'목','FRI':'금','SAT':'토','SUN':'일'}
 VALID_TEAMS = set(TEAM_ENG_KOR.keys())
 
 def get_standings():
-    # 컬럼: RK(0) TEAM(1) GAMES(2) W(3) L(4) D(5) PCT(6) GB(7)
     url = "https://eng.koreabaseball.com/Standings/TeamStandings.aspx"
     try:
         res = requests.get(url, headers=HEADERS, timeout=15)
         soup = BeautifulSoup(res.text, "html.parser")
-        tables = soup.select("table")
-        if not tables:
-            print("순위 테이블 없음")
-            return []
-        rows = tables[0].select("tr")[1:]
+        rows = soup.select("table")[0].select("tr")[1:]
         standings = []
         for row in rows:
             cols = row.select("td")
@@ -41,7 +35,6 @@ def get_standings():
                 continue
             team_eng = cols[1].get_text(strip=True).upper()
             team_kor = TEAM_ENG_KOR.get(team_eng, team_eng)
-            is_kia = team_eng == 'KIA'
             standings.append({
                 "rank": rank,
                 "team": team_kor,
@@ -50,7 +43,7 @@ def get_standings():
                 "l": cols[4].get_text(strip=True),
                 "pct": cols[6].get_text(strip=True),
                 "gb": cols[7].get_text(strip=True),
-                "kia": is_kia
+                "kia": team_eng == 'KIA'
             })
         print(f"순위: {len(standings)}팀 수집")
         return standings
@@ -65,7 +58,6 @@ def get_kia_schedule():
         soup = BeautifulSoup(res.text, "html.parser")
         table = soup.select_one("table")
         if not table:
-            print("일정 테이블 없음")
             return []
 
         rows = table.select("tr")
@@ -78,17 +70,13 @@ def get_kia_schedule():
                 continue
 
             first = cols[0].get_text(strip=True)
-            # 날짜 행 감지: "03.28(SAT)" 형태
             if re.match(r'\d{2}\.\d{2}\(\w+\)', first):
                 current_date_raw = first
 
             col_texts = [c.get_text(strip=True).upper() for c in cols]
-
-            # KIA가 없으면 스킵
             if 'KIA' not in col_texts:
                 continue
 
-            # 스코어 파싱: X:Y 형태 (X, Y 모두 숫자)
             for i, txt in enumerate(col_texts):
                 score_m = re.match(r'^(\d+):(\d+)$', txt)
                 if not score_m:
@@ -99,8 +87,8 @@ def get_kia_schedule():
                 away = col_texts[i-1]
                 home = col_texts[i+1]
 
-                # away, home이 유효한 팀명인지 확인 (REGULAR 같은 오염 방지)
-                if away not in VALID_TEAMS and home not in VALID_TEAMS:
+                # 유효한 팀명만 허용 (REGULAR 등 오염 방지)
+                if away not in VALID_TEAMS or home not in VALID_TEAMS:
                     continue
                 if 'KIA' not in away and 'KIA' not in home:
                     continue
@@ -109,25 +97,13 @@ def get_kia_schedule():
                 home_score = int(score_m.group(2))
 
                 if 'KIA' in away:
-                    kia_s, opp_s = away_score, home_score
-                    opp_eng = home
-                    venue = '원정'
+                    kia_s, opp_s, opp_eng, venue = away_score, home_score, home, '원정'
                 else:
-                    kia_s, opp_s = home_score, away_score
-                    opp_eng = away
-                    venue = '홈'
+                    kia_s, opp_s, opp_eng, venue = home_score, away_score, away, '홈'
 
-                opp_kor = TEAM_ENG_KOR.get(opp_eng, opp_eng)
-                opp_short = opp_kor.split(' ')[0]
+                opp_short = TEAM_ENG_KOR.get(opp_eng, opp_eng).split(' ')[0]
+                result = 'win' if kia_s > opp_s else ('lose' if kia_s < opp_s else 'draw')
 
-                if kia_s > opp_s:
-                    result = 'win'
-                elif kia_s < opp_s:
-                    result = 'lose'
-                else:
-                    result = 'draw'
-
-                # 날짜 한글 변환: "03.28(SAT)" -> "03.28(토)"
                 day_m = re.search(r'\((\w+)\)', current_date_raw)
                 day_kor = DAY_MAP.get(day_m.group(1), '') if day_m else ''
                 date_str = f"{current_date_raw[:5]}({day_kor})" if current_date_raw else ""
@@ -152,14 +128,16 @@ def build_html(standings, games):
         html = f.read()
 
     now = datetime.now()
-    is_regular = now >= datetime(2026, 3, 28)
-    season_key = 'regular' if is_regular else 'preseason'
+    today = now.strftime("%Y.%m.%d")
 
     if standings:
         s_json = json.dumps(standings, ensure_ascii=False)
-        # regular standings 블록 교체
-        pattern = r"(regular'[\s\S]{0,300}?standings:\s*)\[[\s\S]*?\],"
-        new_html = re.sub(pattern, r'\g<1>' + s_json + ',', html, count=1)
+        # regular: { ... standings: [...], 패턴
+        new_html = re.sub(
+            r'(regular:\s*\{[\s\S]{0,500}?standings:\s*)\[[\s\S]*?\],',
+            r'\g<1>' + s_json + ',',
+            html, count=1
+        )
         if new_html != html:
             html = new_html
             print(f"✅ standings 교체 성공 ({len(standings)}팀)")
@@ -169,16 +147,17 @@ def build_html(standings, games):
     if games:
         recent = games[-10:]
         g_json = json.dumps(recent, ensure_ascii=False)
-        # regular recentGames 교체
-        pattern = r"(regular'[\s\S]{0,100}?recentGames:\s*)\[[\s\S]*?\],"
-        new_html = re.sub(pattern, r'\g<1>' + g_json + ',', html, count=1)
+        new_html = re.sub(
+            r'(regular:\s*\{[\s\S]{0,100}?recentGames:\s*)\[[\s\S]*?\],',
+            r'\g<1>' + g_json + ',',
+            html, count=1
+        )
         if new_html != html:
             html = new_html
             print(f"✅ recentGames 교체 성공 ({len(recent)}경기)")
         else:
             print(f"⚠️ recentGames 패턴 실패")
 
-    today = now.strftime("%Y.%m.%d")
     html = re.sub(r'2026 KBO 리그 · .*? 기준', f'2026 KBO 리그 · {today} 기준', html)
 
     with open("index.html", "w", encoding="utf-8") as f:
