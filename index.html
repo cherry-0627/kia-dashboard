@@ -230,7 +230,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans KR', s
 
   <!-- 시즌 스탯 -->
   <div class="card" style="margin-bottom:16px;">
-    <div class="card-title" id="statCardTitle">KIA 2026 시범경기 성적</div>
+    <div class="card-title" id="statCardTitle">KIA 2026 정규시즌 성적</div>
     <div class="stat-grid" id="statGrid">
       <div class="stat-item highlight"><div class="label">순위</div><div class="value" id="s-rank">-</div><div class="sub" id="s-rank-sub">로딩중</div></div>
       <div class="stat-item"><div class="label">승 / 무 / 패</div><div class="value" id="s-record">-</div><div class="sub" id="s-winrate">승률 -</div></div>
@@ -302,7 +302,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Noto Sans KR', s
     <div id="favStatsContainer"></div>
   </div>
 
-  <div style="font-size: 11px; color: var(--muted); padding: 12px 0 4px;">* 2026 KBO 개막 전 (3월 28일 개막 예정). 시범경기 성적 기반. 최형우 → 삼성 이적 / 박찬호 → 두산 FA. 외국인: 네일·올러(투수 재계약) + 카스트로(타자 신규) + 데일(아시아쿼터, 내야수 신규). 김도영 유격수 전환.</div>
+  <div style="font-size: 11px; color: var(--muted); padding: 12px 0 4px;">* 2026 KBO 정규시즌 개막 (3월 28일). 외국인: 네일·올러(투수) + 카스트로(타자) + 데일(아시아쿼터). 김도영 유격수 전환.</div>
   <div class="last-update" id="lastUpdate">마지막 업데이트: —</div>
 </div>
 
@@ -394,6 +394,9 @@ const SEASON_DATA = {
     recentGames: [
       { date: '03.28(토)', opp: 'vs SSG', score: '6-7', result: 'lose', venue: '원정' },
       { date: '03.29(일)', opp: 'vs SSG', score: '6-11', result: 'lose', venue: '원정' },
+      { date: '03.31(화)', opp: 'vs LG', score: '18:30', result: 'upcoming', venue: '잠실', fullDate: '2026-03-31T18:30:00' },
+      { date: '04.01(수)', opp: 'vs LG', score: '18:30', result: 'upcoming', venue: '잠실', fullDate: '2026-04-01T18:30:00' },
+      { date: '04.02(목)', opp: 'vs LG', score: '18:30', result: 'upcoming', venue: '잠실', fullDate: '2026-04-02T18:30:00' },
     ],
     kiaStats: { rank: '9위', record: '0 / 0 / 2', winrate: '.000', avg: '-', avgRank: '-', era: '-', eraRank: '-', label: '2026 정규시즌 성적' },
     standings: [
