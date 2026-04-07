@@ -54,6 +54,49 @@ def safe_avg(s):
         return f".{int(f*1000):03d}" if f < 1 else f"{f:.3f}"
     except: return '-'
 
+
+def get_kia_player_ids():
+    """BasicOld.aspx에서 KIA 선수 이름→playerId 자동 수집"""
+    ids = {}
+    base = "https://www.koreabaseball.com/Record/Player/HitterBasic/BasicOld.aspx"
+    try:
+        res = requests.get(base, headers=HEADERS, timeout=15)
+        soup = BeautifulSoup(res.text, "html.parser")
+        for a in soup.select("table a[href*='playerId']"):
+            name = a.get_text(strip=True)
+            href = a.get('href','')
+            m = re.search(r'playerId=(\d+)', href)
+            if m:
+                # 팀 확인
+                tr = a.find_parent('tr')
+                if tr:
+                    cols = tr.select("td")
+                    if len(cols) > 2 and cols[2].get_text(strip=True) == 'KIA':
+                        ids[name] = m.group(1)
+    except Exception as e:
+        print(f"player ID 수집 오류: {e}")
+    
+    # 투수도 수집
+    base2 = "https://www.koreabaseball.com/Record/Player/PitcherBasic/BasicOld.aspx"
+    try:
+        res = requests.get(base2, headers=HEADERS, timeout=15)
+        soup = BeautifulSoup(res.text, "html.parser")
+        for a in soup.select("table a[href*='playerId']"):
+            name = a.get_text(strip=True)
+            href = a.get('href','')
+            m = re.search(r'playerId=(\d+)', href)
+            if m:
+                tr = a.find_parent('tr')
+                if tr:
+                    cols = tr.select("td")
+                    if len(cols) > 2 and cols[2].get_text(strip=True) == 'KIA':
+                        ids[name] = m.group(1)
+    except Exception as e:
+        print(f"투수 ID 수집 오류: {e}")
+    
+    print(f"KIA 선수 ID 수집: {len(ids)}명 - {list(ids.keys())}")
+    return ids
+
 def get_standings():
     try:
         res=requests.get("https://eng.koreabaseball.com/Standings/TeamStandings.aspx",headers=HEADERS,timeout=15)
@@ -204,12 +247,15 @@ def fetch_pitcher(name, info):
         print(f"  {name} 오류: {e}")
     return None
 
-def scrape_all_hitters():
+def scrape_all_hitters(auto_ids=None):
     all_names = list(set(MAIN_HITTERS + FAV_HITTERS))
     result = {}
     for name in all_names:
-        info = HITTER_INFO.get(name)
-        if not info: continue
+        info = HITTER_INFO.get(name, {}).copy()
+        # 자동 수집된 ID가 있으면 우선 사용
+        if auto_ids and name in auto_ids:
+            info['pid'] = auto_ids[name]
+        if not info.get('pid'): continue
         data = fetch_hitter(name, info)
         if data:
             result[name] = data
@@ -219,12 +265,14 @@ def scrape_all_hitters():
     print(f"KIA 타자: {len(result)}명")
     return result
 
-def scrape_all_pitchers():
+def scrape_all_pitchers(auto_ids=None):
     all_names = list(set(MAIN_PITCHERS + FAV_PITCHERS))
     result = {}
     for name in all_names:
-        info = PITCHER_INFO.get(name)
-        if not info: continue
+        info = PITCHER_INFO.get(name, {}).copy()
+        if auto_ids and name in auto_ids:
+            info['pid'] = auto_ids[name]
+        if not info.get('pid'): continue
         data = fetch_pitcher(name, info)
         if data:
             result[name] = data
@@ -301,6 +349,7 @@ if __name__=="__main__":
     print("📡 KBO 데이터 수집 중...")
     standings        = get_standings()
     games,next_game  = get_kia_schedule()
-    hitters          = scrape_all_hitters()
-    pitchers         = scrape_all_pitchers()
+    auto_ids         = get_kia_player_ids()
+    hitters          = scrape_all_hitters(auto_ids)
+    pitchers         = scrape_all_pitchers(auto_ids)
     build_html(standings,games,next_game,hitters,pitchers)
