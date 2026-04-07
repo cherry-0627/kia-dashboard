@@ -153,12 +153,12 @@ def fetch_hitter(name, info):
                 if '2026' in row_text and '정규' in row_text:
                     if len(cols) >= 8:
                         return {
-                            "avg": safe_avg(cols[3].get_text(strip=True)),
-                            "h":   safe_int(cols[7].get_text(strip=True)),
-                            "ab":  safe_int(cols[5].get_text(strip=True)),
-                            "r":   safe_int(cols[6].get_text(strip=True)),
-                            "hr":  safe_int(cols[10].get_text(strip=True)) if len(cols)>10 else 0,
-                            "rbi": safe_int(cols[12].get_text(strip=True)) if len(cols)>12 else 0,
+                            "avg": safe_avg(cols[1].get_text(strip=True)),
+                            "h":   safe_int(cols[6].get_text(strip=True)),
+                            "ab":  safe_int(cols[4].get_text(strip=True)),
+                            "r":   safe_int(cols[5].get_text(strip=True)),
+                            "hr":  safe_int(cols[9].get_text(strip=True)) if len(cols)>9 else 0,
+                            "rbi": safe_int(cols[11].get_text(strip=True)) if len(cols)>11 else 0,
                         }
         # 테이블에서 못 찾으면 첫번째 데이터 행 사용
         for table in tables:
@@ -167,12 +167,12 @@ def fetch_hitter(name, info):
                 cols = rows[0].select("td")
                 if len(cols) >= 8:
                     return {
-                        "avg": safe_avg(cols[3].get_text(strip=True)),
-                        "h":   safe_int(cols[7].get_text(strip=True)),
-                        "ab":  safe_int(cols[5].get_text(strip=True)),
-                        "r":   safe_int(cols[6].get_text(strip=True)),
-                        "hr":  safe_int(cols[10].get_text(strip=True)) if len(cols)>10 else 0,
-                        "rbi": safe_int(cols[12].get_text(strip=True)) if len(cols)>12 else 0,
+                        "avg": safe_avg(cols[1].get_text(strip=True)),
+                        "h":   safe_int(cols[6].get_text(strip=True)),
+                        "ab":  safe_int(cols[4].get_text(strip=True)),
+                        "r":   safe_int(cols[5].get_text(strip=True)),
+                        "hr":  safe_int(cols[9].get_text(strip=True)) if len(cols)>9 else 0,
+                        "rbi": safe_int(cols[11].get_text(strip=True)) if len(cols)>11 else 0,
                     }
     except Exception as e:
         print(f"  {name} 오류: {e}")
