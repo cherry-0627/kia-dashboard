@@ -184,39 +184,25 @@ def fetch_hitter(name, info):
     try:
         res = requests.get(url, headers=HEADERS, timeout=10)
         soup = BeautifulSoup(res.text, "html.parser")
-        # 정규시즌 기록 테이블 찾기
-        tables = soup.select("table")
-        for table in tables:
-            rows = table.select("tr")
-            for row in rows:
+        # 타자 테이블: 팀명(0) AVG(1) G(2) PA(3) AB(4) R(5) H(6) 2B(7) 3B(8) HR(9) TB(10) RBI(11)
+        for table in soup.select("table"):
+            for row in table.select("tr"):
                 cols = row.select("td")
-                if not cols: continue
-                # 2026 정규시즌 행 찾기
-                row_text = row.get_text()
-                if '2026' in row_text and '정규' in row_text:
-                    if len(cols) >= 8:
-                        return {
-                            "avg": safe_avg(cols[1].get_text(strip=True)),
-                            "h":   safe_int(cols[6].get_text(strip=True)),
-                            "ab":  safe_int(cols[4].get_text(strip=True)),
-                            "r":   safe_int(cols[5].get_text(strip=True)),
-                            "hr":  safe_int(cols[9].get_text(strip=True)) if len(cols)>9 else 0,
-                            "rbi": safe_int(cols[11].get_text(strip=True)) if len(cols)>11 else 0,
-                        }
-        # 테이블에서 못 찾으면 첫번째 데이터 행 사용
-        for table in tables:
-            rows = table.select("tbody tr")
-            if rows:
-                cols = rows[0].select("td")
-                if len(cols) >= 8:
-                    return {
-                        "avg": safe_avg(cols[1].get_text(strip=True)),
-                        "h":   safe_int(cols[6].get_text(strip=True)),
-                        "ab":  safe_int(cols[4].get_text(strip=True)),
-                        "r":   safe_int(cols[5].get_text(strip=True)),
-                        "hr":  safe_int(cols[9].get_text(strip=True)) if len(cols)>9 else 0,
-                        "rbi": safe_int(cols[11].get_text(strip=True)) if len(cols)>11 else 0,
-                    }
+                if len(cols) < 10: continue
+                if cols[0].get_text(strip=True) != 'KIA': continue
+                try:
+                    ar = cols[1].get_text(strip=True)
+                    avg = safe_avg(ar)
+                except:
+                    avg = '-'
+                return {
+                    "avg": avg,
+                    "h":   safe_int(cols[6].get_text(strip=True)),
+                    "ab":  safe_int(cols[4].get_text(strip=True)),
+                    "r":   safe_int(cols[5].get_text(strip=True)),
+                    "hr":  safe_int(cols[9].get_text(strip=True)) if len(cols)>9 else 0,
+                    "rbi": safe_int(cols[11].get_text(strip=True)) if len(cols)>11 else 0,
+                }
     except Exception as e:
         print(f"  {name} 오류: {e}")
     return None
@@ -227,21 +213,23 @@ def fetch_pitcher(name, info):
     try:
         res = requests.get(url, headers=HEADERS, timeout=10)
         soup = BeautifulSoup(res.text, "html.parser")
-        tables = soup.select("table")
-        for table in tables:
-            for row in table.select("tbody tr"):
+        # KIA 팀명이 첫 컬럼인 행 찾기
+        # 투수 테이블: 팀명(0) ERA(1) G(2) W(3) L(4) SV(5) HLD(6) WPCT(7) IP(8) H(9) HR(10) BB(11) HBP(12) SO(13) R(14) ER(15) WHIP(16)
+        for table in soup.select("table"):
+            for row in table.select("tr"):
                 cols = row.select("td")
                 if len(cols) < 10: continue
+                if cols[0].get_text(strip=True) != 'KIA': continue
                 return {
-                    "era":  cols[3].get_text(strip=True) or '-',
-                    "w":    safe_int(cols[5].get_text(strip=True)),
-                    "l":    safe_int(cols[6].get_text(strip=True)),
-                    "sv":   safe_int(cols[7].get_text(strip=True)),
-                    "ip":   cols[10].get_text(strip=True) if len(cols)>10 else '0.0',
-                    "h":    safe_int(cols[11].get_text(strip=True)) if len(cols)>11 else 0,
-                    "bb":   safe_int(cols[13].get_text(strip=True)) if len(cols)>13 else 0,
-                    "k":    safe_int(cols[15].get_text(strip=True)) if len(cols)>15 else 0,
-                    "whip": cols[18].get_text(strip=True) if len(cols)>18 else '-',
+                    "era":  cols[1].get_text(strip=True) or '-',
+                    "w":    safe_int(cols[3].get_text(strip=True)),
+                    "l":    safe_int(cols[4].get_text(strip=True)),
+                    "sv":   safe_int(cols[5].get_text(strip=True)),
+                    "ip":   cols[8].get_text(strip=True) if len(cols)>8 else '0.0',
+                    "h":    safe_int(cols[9].get_text(strip=True)) if len(cols)>9 else 0,
+                    "bb":   safe_int(cols[11].get_text(strip=True)) if len(cols)>11 else 0,
+                    "k":    safe_int(cols[13].get_text(strip=True)) if len(cols)>13 else 0,
+                    "whip": cols[16].get_text(strip=True) if len(cols)>16 else '-',
                 }
     except Exception as e:
         print(f"  {name} 오류: {e}")
