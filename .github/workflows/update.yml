@@ -2,7 +2,7 @@ name: KIA Dashboard Auto Update
 
 on:
   schedule:
-    - cron: '0 22 * * *'  # 매일 오전 7시 KST (UTC+9 기준 22:00 UTC)
+    - cron: '0 14 * * *'  # 매일 오후 11시 KST (UTC 14:00)
   workflow_dispatch:        # 수동 실행 버튼도 생김
 
 jobs:
