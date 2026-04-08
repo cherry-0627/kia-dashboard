@@ -363,9 +363,10 @@ def fetch_hitter(name, info):
                     avg = safe_avg(ar)
                 except:
                     avg = '-'
-                # 두번째 테이블에서 bb, obp, slg, ops 추출
-                bb, obp, slg, ops, so, pa = 0, '-', '-', '-', 0, 0
+                # pa는 첫번째 테이블 cols[3]에서 직접 파싱
                 pa = safe_int(cols[3].get_text(strip=True))
+                # 두번째 테이블에서 bb, obp, slg, ops 추출
+                bb, obp, slg, ops, so = 0, '-', '-', '-', 0
                 # 두번째 테이블 찾기 (BB IBB HBP SO GDP SLG OBP E SB% MH OPS)
                 for t2 in soup.select("table"):
                     rows2 = t2.select("tr")
