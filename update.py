@@ -56,129 +56,74 @@ def safe_avg(s):
 
 
 def get_kia_player_ids():
-    """BasicOld.aspx에서 KIA 선수 이름→playerId 자동 수집"""
+    """BasicOld.aspx 전체 페이지에서 KIA 선수 ID 수집 (POST 페이지네이션)"""
     ids = {}
-    base = "https://www.koreabaseball.com/Record/Player/HitterBasic/BasicOld.aspx"
-    try:
-        res = requests.get(base, headers=HEADERS, timeout=15)
-        soup = BeautifulSoup(res.text, "html.parser")
-        for a in soup.select("table a[href*='playerId']"):
-            name = a.get_text(strip=True)
-            href = a.get('href','')
-            m = re.search(r'playerId=(\d+)', href)
-            if m:
-                # 팀 확인
-                tr = a.find_parent('tr')
-                if tr:
-                    cols = tr.select("td")
-                    if len(cols) > 2 and cols[2].get_text(strip=True) == 'KIA':
-                        ids[name] = m.group(1)
-    except Exception as e:
-        print(f"player ID 수집 오류: {e}")
     
-    # 투수도 수집
-    base2 = "https://www.koreabaseball.com/Record/Player/PitcherBasic/BasicOld.aspx"
-    try:
-        res = requests.get(base2, headers=HEADERS, timeout=15)
-        soup = BeautifulSoup(res.text, "html.parser")
-        for a in soup.select("table a[href*='playerId']"):
+    def parse_kia_from_soup(soup, hitter=True):
+        path = 'HitterDetail' if hitter else 'PitcherDetail'
+        for a in soup.select(f"table a[href*='{path}']"):
             name = a.get_text(strip=True)
-            href = a.get('href','')
-            m = re.search(r'playerId=(\d+)', href)
-            if m:
-                tr = a.find_parent('tr')
-                if tr:
-                    cols = tr.select("td")
-                    if len(cols) > 2 and cols[2].get_text(strip=True) == 'KIA':
-                        ids[name] = m.group(1)
-    except Exception as e:
-        print(f"투수 ID 수집 오류: {e}")
+            m = re.search(r'playerId=(\d+)', a.get('href',''))
+            if not m: continue
+            tr = a.find_parent('tr')
+            if not tr: continue
+            cols = tr.select('td')
+            if len(cols) > 2 and cols[2].get_text(strip=True) == 'KIA':
+                ids[name] = m.group(1)
+    
+    def fetch_all_pages(base_url, hitter=True):
+        try:
+            res = requests.get(base_url, headers=HEADERS, timeout=15)
+            soup = BeautifulSoup(res.text, 'html.parser')
+            parse_kia_from_soup(soup, hitter)
+            
+            # ViewState 추출
+            vs = soup.find('input', {'id': '__VIEWSTATE'})
+            ev = soup.find('input', {'id': '__EVENTVALIDATION'})
+            if not vs: return
+            
+            viewstate = vs['value']
+            eventvalidation = ev['value'] if ev else ''
+            
+            # 페이지 수 파악 (onclick에서)
+            max_page = 1
+            for tag in soup.find_all(attrs={'href': True}):
+                m = re.search(r'btnNo(\d+)', tag.get('href',''))
+                if m: max_page = max(max_page, int(m.group(1)))
+            for tag in soup.find_all(attrs={'onclick': True}):
+                m = re.search(r'btnNo(\d+)', tag.get('onclick',''))
+                if m: max_page = max(max_page, int(m.group(1)))
+            
+            # 2페이지부터 POST
+            for page in range(2, max_page + 1):
+                try:
+                    post_data = {
+                        '__VIEWSTATE': viewstate,
+                        '__EVENTVALIDATION': eventvalidation,
+                        '__EVENTTARGET': f'ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ucPager$btnNo{page}',
+                        '__EVENTARGUMENT': '',
+                    }
+                    r2 = requests.post(base_url,
+                        headers={**HEADERS, 'Content-Type': 'application/x-www-form-urlencoded'},
+                        data=post_data, timeout=15)
+                    s2 = BeautifulSoup(r2.text, 'html.parser')
+                    parse_kia_from_soup(s2, hitter)
+                    vs2 = s2.find('input', {'id': '__VIEWSTATE'})
+                    ev2 = s2.find('input', {'id': '__EVENTVALIDATION'})
+                    if vs2: viewstate = vs2['value']
+                    if ev2: eventvalidation = ev2['value']
+                except Exception as e:
+                    print(f"  페이지 {page} 오류: {e}")
+                    break
+        except Exception as e:
+            print(f"  ID 수집 오류: {e}")
+    
+    fetch_all_pages("https://www.koreabaseball.com/Record/Player/HitterBasic/BasicOld.aspx", hitter=True)
+    fetch_all_pages("https://www.koreabaseball.com/Record/Player/PitcherBasic/BasicOld.aspx", hitter=False)
     
     print(f"KIA 선수 ID 수집: {len(ids)}명 - {list(ids.keys())}")
     return ids
 
-def get_top_batters():
-    """전체 타자 순위 상위 10명 - BasicOld.aspx에서 KIA 표시 포함"""
-    try:
-        res = requests.get("https://www.koreabaseball.com/Record/Player/HitterBasic/BasicOld.aspx",
-                           headers=HEADERS, timeout=15)
-        soup = BeautifulSoup(res.text, "html.parser")
-        table = soup.select_one("table")
-        if not table: return []
-        out = []
-        for row in table.select("tbody tr") or table.select("tr")[1:]:
-            cols = row.select("td")
-            if len(cols) < 8: continue
-            try: rank = int(cols[0].get_text(strip=True))
-            except: continue
-            a = row.select_one("a")
-            pid = ""
-            if a:
-                m = re.search(r'playerId=(\d+)', a.get('href',''))
-                if m: pid = m.group(1)
-            name = cols[1].get_text(strip=True)
-            team = cols[2].get_text(strip=True)
-            try:
-                avg_raw = cols[3].get_text(strip=True)
-                avg = f".{int(float(avg_raw)*1000):03d}" if avg_raw and avg_raw != '-' else '-'
-            except: avg = '-'
-            out.append({
-                "rank": rank, "name": name, "team": team,
-                "avg": avg,
-                "h":   safe_int(cols[6].get_text(strip=True)),
-                "hr":  safe_int(cols[9].get_text(strip=True)) if len(cols)>9 else 0,
-                "rbi": safe_int(cols[11].get_text(strip=True)) if len(cols)>11 else 0,
-                "kia": team == 'KIA'
-            })
-            if len(out) >= 10: break
-        print(f"타자 순위: {len(out)}명")
-        return out
-    except Exception as e: print(f"batters error: {e}"); return []
-
-def get_top_pitchers():
-    """전체 투수 순위 상위 10명"""
-    try:
-        res = requests.get("https://www.koreabaseball.com/Record/Player/PitcherBasic/BasicOld.aspx",
-                           headers=HEADERS, timeout=15)
-        soup = BeautifulSoup(res.text, "html.parser")
-        table = soup.select_one("table")
-        if not table: return []
-        out = []
-        for row in table.select("tbody tr") or table.select("tr")[1:]:
-            cols = row.select("td")
-            if len(cols) < 8: continue
-            try: rank = int(cols[0].get_text(strip=True))
-            except: continue
-            name = cols[1].get_text(strip=True)
-            team = cols[2].get_text(strip=True)
-            out.append({
-                "rank": rank, "name": name, "team": team,
-                "era": cols[3].get_text(strip=True),
-                "ip":  cols[8].get_text(strip=True) if len(cols)>8 else '-',
-                "k":   safe_int(cols[13].get_text(strip=True)) if len(cols)>13 else 0,
-                "wl":  f"{safe_int(cols[5].get_text(strip=True))}-{safe_int(cols[6].get_text(strip=True))}" if len(cols)>6 else '-',
-                "kia": team == 'KIA'
-            })
-            if len(out) >= 10: break
-        print(f"투수 순위: {len(out)}명")
-        return out
-    except Exception as e: print(f"pitchers error: {e}"); return []
-
-def get_kia_stats_from_standings(standings):
-    """순위표에서 KIA 성적 파싱"""
-    for t in standings:
-        if t.get('kia'):
-            w, l = safe_int(t['w']), safe_int(t['l'])
-            g = safe_int(t['g'])
-            pct = t['pct']
-            rank = t['rank']
-            gb = t['gb']
-            return {
-                "rank": f"{rank}위", "record": f"{w} / 0 / {l}",
-                "winrate": pct, "avg": "-", "avgRank": "-",
-                "era": "-", "eraRank": "-", "label": "2026 정규시즌 성적"
-            }
-    return None
 
 def get_standings():
     try:
@@ -454,14 +399,22 @@ def fetch_pitcher(name, info):
     return None
 
 def scrape_all_hitters(auto_ids=None):
-    all_names = list(set(MAIN_HITTERS + FAV_HITTERS))
+    # auto_ids에 있는 모든 KIA 선수 + 기존 HITTER_INFO 합쳐서 조회
+    all_ids = {}
+    # 기존 하드코딩 ID
+    for name, info in HITTER_INFO.items():
+        all_ids[name] = info['pid']
+    # 자동 수집 ID로 덮어쓰기 + 새 선수 추가
+    if auto_ids:
+        for name, pid in auto_ids.items():
+            if name not in PITCHER_INFO:  # 투수 제외
+                all_ids[name] = pid
+    
     result = {}
-    for name in all_names:
-        info = HITTER_INFO.get(name, {}).copy()
-        # 자동 수집된 ID가 있으면 우선 사용
-        if auto_ids and name in auto_ids:
-            info['pid'] = auto_ids[name]
-        if not info.get('pid'): continue
+    for name, pid in all_ids.items():
+        info = HITTER_INFO.get(name, {'num':'-','pos':'-','pid':pid})
+        info = info.copy()
+        info['pid'] = pid
         data = fetch_hitter(name, info)
         if data:
             result[name] = data
@@ -472,13 +425,19 @@ def scrape_all_hitters(auto_ids=None):
     return result
 
 def scrape_all_pitchers(auto_ids=None):
-    all_names = list(set(MAIN_PITCHERS + FAV_PITCHERS))
+    all_ids = {}
+    for name, info in PITCHER_INFO.items():
+        all_ids[name] = info['pid']
+    if auto_ids:
+        for name, pid in auto_ids.items():
+            if name not in HITTER_INFO:
+                all_ids[name] = pid
+    
     result = {}
-    for name in all_names:
-        info = PITCHER_INFO.get(name, {}).copy()
-        if auto_ids and name in auto_ids:
-            info['pid'] = auto_ids[name]
-        if not info.get('pid'): continue
+    for name, pid in all_ids.items():
+        info = PITCHER_INFO.get(name, {'num':'-','pos':'투수','pid':pid})
+        info = info.copy()
+        info['pid'] = pid
         data = fetch_pitcher(name, info)
         if data:
             result[name] = data
@@ -543,13 +502,32 @@ def build_html(standings, games, next_game, hitters, pitchers, batters=None, top
     if next_game:
         html=replace_in_regular(html,'nextGame',json.dumps(next_game,ensure_ascii=False))
     if hitters:
-        main_h=[mh(n,hitters[n],HITTER_INFO[n]) if n in hitters else me(n,HITTER_INFO[n]) for n in MAIN_HITTERS if n in HITTER_INFO]
-        fav_h =[mh(n,hitters[n],HITTER_INFO[n]) if n in hitters else me(n,HITTER_INFO[n]) for n in FAV_HITTERS  if n in HITTER_INFO]
+        # 모든 수집된 KIA 타자 - 타율 순 정렬
+        def avg_sort(name):
+            d = hitters.get(name, {})
+            try: return -float(d.get('avg','-').replace('.','0.') if d.get('avg','-') != '-' else '0')
+            except: return 0
+        all_hitter_names = sorted(hitters.keys(), key=avg_sort)
+        fav_names = [n for n in ['오선우','박재현'] if n in HITTER_INFO]
+        main_names = [n for n in all_hitter_names if n not in fav_names]
+        
+        main_h = [mh(n, hitters[n], HITTER_INFO.get(n, {'num':'-','pos':'-','pid':''})) for n in main_names if n in hitters]
+        fav_h  = [mh(n, hitters[n], HITTER_INFO.get(n, {'num':'-','pos':'-','pid':''})) if n in hitters else me(n, HITTER_INFO.get(n, {'num':'-','pos':'-','pid':''})) for n in fav_names]
         html=replace_in_regular(html,'kiaHitters',json.dumps(main_h,ensure_ascii=False))
         html=replace_in_regular(html,'kiaFavHitters',json.dumps(fav_h,ensure_ascii=False))
-    if pitchers:  # KIA 선수
-        main_p=[mp(n,pitchers[n],PITCHER_INFO[n]) if n in pitchers else mpe(n,PITCHER_INFO[n]) for n in MAIN_PITCHERS if n in PITCHER_INFO]
-        fav_p =[mp(n,pitchers[n],PITCHER_INFO[n]) if n in pitchers else mpe(n,PITCHER_INFO[n]) for n in FAV_PITCHERS  if n in PITCHER_INFO]
+    if pitchers:
+        def era_sort(name):
+            d = pitchers.get(name, {})
+            try:
+                era = d.get('era', '99.99')
+                return float(era) if era not in ['-',''] else 99.99
+            except: return 99.99
+        all_pitcher_names = sorted(pitchers.keys(), key=era_sort)
+        fav_p_names = [n for n in ['최지민'] if n in PITCHER_INFO]
+        main_p_names = [n for n in all_pitcher_names if n not in fav_p_names]
+        
+        main_p = [mp(n, pitchers[n], PITCHER_INFO.get(n, {'num':'-','pos':'투수','pid':''})) for n in main_p_names if n in pitchers]
+        fav_p  = [mp(n, pitchers[n], PITCHER_INFO.get(n, {'num':'-','pos':'불펜','pid':''})) if n in pitchers else mpe(n, PITCHER_INFO.get(n, {'num':'-','pos':'불펜','pid':''})) for n in fav_p_names]
         html=replace_in_regular(html,'kiaPitchers',json.dumps(main_p,ensure_ascii=False))
         html=replace_in_regular(html,'kiaFavPitchers',json.dumps(fav_p,ensure_ascii=False))
     if batters:
