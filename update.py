@@ -358,13 +358,34 @@ def fetch_hitter(name, info):
                     avg = safe_avg(ar)
                 except:
                     avg = '-'
+                # 두번째 테이블에서 bb, obp, slg, ops 추출
+                bb, obp, slg, ops, so, pa = 0, '-', '-', '-', 0, 0
+                pa = safe_int(cols[3].get_text(strip=True))
+                # 두번째 테이블 찾기 (BB IBB HBP SO GDP SLG OBP E SB% MH OPS)
+                for t2 in soup.select("table"):
+                    rows2 = t2.select("tr")
+                    for r2 in rows2:
+                        c2 = r2.select("td")
+                        if len(c2) >= 11:
+                            # BB(0) IBB(1) HBP(2) SO(3) GDP(4) SLG(5) OBP(6) E(7) SB%(8) MH(9) OPS(10)
+                            first_val = c2[0].get_text(strip=True)
+                            try:
+                                bb = safe_int(first_val)
+                                so = safe_int(c2[3].get_text(strip=True))
+                                slg = c2[5].get_text(strip=True)
+                                obp = c2[6].get_text(strip=True)
+                                ops = c2[10].get_text(strip=True)
+                                break
+                            except: pass
                 return {
                     "avg": avg,
-                    "h":   safe_int(cols[6].get_text(strip=True)),
+                    "pa":  pa,
                     "ab":  safe_int(cols[4].get_text(strip=True)),
                     "r":   safe_int(cols[5].get_text(strip=True)),
+                    "h":   safe_int(cols[6].get_text(strip=True)),
                     "hr":  safe_int(cols[9].get_text(strip=True)) if len(cols)>9 else 0,
                     "rbi": safe_int(cols[11].get_text(strip=True)) if len(cols)>11 else 0,
+                    "bb":  bb, "so": so, "obp": obp, "slg": slg, "ops": ops,
                 }
     except Exception as e:
         print(f"  {name} 오류: {e}")
@@ -383,13 +404,14 @@ def fetch_pitcher(name, info):
                 cols = row.select("td")
                 if len(cols) < 10: continue
                 if cols[0].get_text(strip=True) != 'KIA': continue
+                # 투수: 팀(0) ERA(1) G(2) W(3) L(4) SV(5) HLD(6) WPCT(7) IP(8) H(9) HR(10) BB(11) HBP(12) SO(13) R(14) ER(15) WHIP(16)
                 return {
                     "era":  cols[1].get_text(strip=True) or '-',
                     "w":    safe_int(cols[3].get_text(strip=True)),
                     "l":    safe_int(cols[4].get_text(strip=True)),
                     "sv":   safe_int(cols[5].get_text(strip=True)),
+                    "hld":  safe_int(cols[6].get_text(strip=True)) if len(cols)>6 else 0,
                     "ip":   cols[8].get_text(strip=True) if len(cols)>8 else '0.0',
-                    "h":    safe_int(cols[9].get_text(strip=True)) if len(cols)>9 else 0,
                     "bb":   safe_int(cols[11].get_text(strip=True)) if len(cols)>11 else 0,
                     "k":    safe_int(cols[13].get_text(strip=True)) if len(cols)>13 else 0,
                     "whip": cols[16].get_text(strip=True) if len(cols)>16 else '-',
@@ -447,10 +469,74 @@ def scrape_all_pitchers(auto_ids=None):
     print(f"KIA 투수: {len(result)}명")
     return result
 
-def mh(n,d,info): return {"name":n,"num":info['num'],"pos":info['pos'],"avg":d.get("avg",'-'),"hr":d.get("hr",0),"rbi":d.get("rbi",0),"r":d.get("r",0),"h":d.get("h",0),"ab":d.get("ab",0),"bb":0,"so":0,"obp":'-',"slg":'-',"ops":'-'}
-def me(n,info): return {"name":n,"num":info['num'],"pos":info['pos'],"avg":'-',"hr":0,"rbi":0,"r":0,"h":0,"ab":0,"bb":0,"so":0,"obp":'-',"slg":'-',"ops":'-'}
-def mp(n,d,info): return {"name":n,"num":info['num'],"pos":info['pos'],"era":d.get("era",'-'),"w":d.get("w",0),"l":d.get("l",0),"sv":d.get("sv",0),"ip":d.get("ip",'0.0'),"h":d.get("h",0),"bb":d.get("bb",0),"k":d.get("k",0),"whip":d.get("whip",'-'),"qs":0}
-def mpe(n,info): return {"name":n,"num":info['num'],"pos":info['pos'],"era":'-',"w":0,"l":0,"sv":0,"ip":'0.0',"h":0,"bb":0,"k":0,"whip":'-',"qs":0}
+def mh(n,d,info): return {"name":n,"num":info['num'],"pos":info['pos'],"avg":d.get("avg",'-'),"pa":d.get("pa",0),"ab":d.get("ab",0),"h":d.get("h",0),"r":d.get("r",0),"rbi":d.get("rbi",0),"hr":d.get("hr",0),"bb":d.get("bb",0),"so":d.get("so",0),"obp":d.get("obp",'-'),"slg":d.get("slg",'-'),"ops":d.get("ops",'-')}
+def me(n,info): return {"name":n,"num":info['num'],"pos":info['pos'],"avg":'-',"pa":0,"ab":0,"h":0,"r":0,"rbi":0,"hr":0,"bb":0,"so":0,"obp":'-',"slg":'-',"ops":'-'}
+def mp(n,d,info): return {"name":n,"num":info['num'],"pos":info['pos'],"era":d.get("era",'-'),"w":d.get("w",0),"l":d.get("l",0),"sv":d.get("sv",0),"hld":d.get("hld",0),"ip":d.get("ip",'0.0'),"bb":d.get("bb",0),"k":d.get("k",0),"whip":d.get("whip",'-')}
+def mpe(n,info): return {"name":n,"num":info['num'],"pos":info['pos'],"era":'-',"w":0,"l":0,"sv":0,"hld":0,"ip":'0.0',"bb":0,"k":0,"whip":'-'}
+
+
+def get_top_batters():
+    """BasicOld.aspx에서 전체 타자 순위 상위 10명"""
+    try:
+        res = requests.get("https://www.koreabaseball.com/Record/Player/HitterBasic/BasicOld.aspx",
+                           headers=HEADERS, timeout=15)
+        soup = BeautifulSoup(res.text, "html.parser")
+        table = soup.select_one("table")
+        if not table: return []
+        out = []
+        for row in table.select("tbody tr") or table.select("tr")[1:]:
+            cols = row.select("td")
+            if len(cols) < 8: continue
+            try: rank = int(cols[0].get_text(strip=True))
+            except: continue
+            name = cols[1].get_text(strip=True)
+            team = cols[2].get_text(strip=True)
+            try:
+                ar = cols[3].get_text(strip=True)
+                avg = f".{int(float(ar)*1000):03d}" if ar and ar != '-' else '-'
+            except: avg = '-'
+            out.append({"rank":rank,"name":name,"team":team,"avg":avg,
+                        "h":safe_int(cols[6].get_text(strip=True)),
+                        "hr":safe_int(cols[9].get_text(strip=True)) if len(cols)>9 else 0,
+                        "rbi":safe_int(cols[11].get_text(strip=True)) if len(cols)>11 else 0,
+                        "kia":team=='KIA'})
+            if len(out) >= 10: break
+        print(f"타자 순위: {len(out)}명"); return out
+    except Exception as e: print(f"batters error: {e}"); return []
+
+def get_top_pitchers():
+    """BasicOld.aspx에서 전체 투수 순위 상위 10명"""
+    try:
+        res = requests.get("https://www.koreabaseball.com/Record/Player/PitcherBasic/BasicOld.aspx",
+                           headers=HEADERS, timeout=15)
+        soup = BeautifulSoup(res.text, "html.parser")
+        table = soup.select_one("table")
+        if not table: return []
+        out = []
+        for row in table.select("tbody tr") or table.select("tr")[1:]:
+            cols = row.select("td")
+            if len(cols) < 8: continue
+            try: rank = int(cols[0].get_text(strip=True))
+            except: continue
+            name = cols[1].get_text(strip=True)
+            team = cols[2].get_text(strip=True)
+            out.append({"rank":rank,"name":name,"team":team,
+                        "era":cols[3].get_text(strip=True),
+                        "ip":cols[8].get_text(strip=True) if len(cols)>8 else '-',
+                        "k":safe_int(cols[13].get_text(strip=True)) if len(cols)>13 else 0,
+                        "wl":f"{safe_int(cols[5].get_text(strip=True))}-{safe_int(cols[6].get_text(strip=True))}" if len(cols)>6 else '-',
+                        "kia":team=='KIA'})
+            if len(out) >= 10: break
+        print(f"투수 순위: {len(out)}명"); return out
+    except Exception as e: print(f"pitchers error: {e}"); return []
+
+def get_kia_stats_from_standings(standings):
+    for t in standings:
+        if t.get('kia'):
+            w,l = safe_int(t['w']),safe_int(t['l'])
+            return {"rank":f"{t['rank']}위","record":f"{w} / 0 / {l}",
+                    "winrate":t['pct'],"avg":"-","avgRank":"-","era":"-","eraRank":"-","label":"2026 정규시즌 성적"}
+    return None
 
 def replace_in_regular(html, key, new_json_str):
     # 공백 무관하게 regular: 섹션 찾기
