@@ -257,11 +257,7 @@ def get_kia_schedule():
                     games.append({"date":date_str,"opp":f"vs {op_short}","score":orig,"result":"upcoming","venue":vname,"fullDate":fdt_str})
                     break
         print(f"KIA 경기: {len(games)}경기")
-        if batters:
-        html=replace_in_regular(html,'batters',json.dumps(batters,ensure_ascii=False))
-    if pitchers:
-        html=replace_in_regular(html,'pitchers',json.dumps(pitchers,ensure_ascii=False))
-    if next_game: print(f"다음 경기: {next_game['date']} vs {next_game['opponent']}")
+        if next_game: print(f"다음 경기: {next_game['date']} vs {next_game['opponent']}")
         return games,next_game
     except Exception as e: print(f"schedule error: {e}"); return [],None
 
@@ -419,6 +415,10 @@ def build_html(standings, games, next_game, hitters, pitchers, batters=None, top
         fav_p =[mp(n,pitchers[n],PITCHER_INFO[n]) if n in pitchers else mpe(n,PITCHER_INFO[n]) for n in FAV_PITCHERS  if n in PITCHER_INFO]
         html=replace_in_regular(html,'kiaPitchers',json.dumps(main_p,ensure_ascii=False))
         html=replace_in_regular(html,'kiaFavPitchers',json.dumps(fav_p,ensure_ascii=False))
+    if batters:
+        html=replace_in_regular(html,'batters',json.dumps(batters,ensure_ascii=False))
+    if top_pitchers:
+        html=replace_in_regular(html,'pitchers',json.dumps(top_pitchers,ensure_ascii=False))
     html=re.sub(r'2026 KBO 리그 · .*? 기준',f'2026 KBO 리그 · {today} 기준',html)
     with open("index.html","w",encoding="utf-8") as f: f.write(html)
     print(f"✅ index.html 완료 ({today})")
