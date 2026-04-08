@@ -304,8 +304,9 @@ def get_kia_schedule_eng():
             dk=DAY_MAP.get(de,'')
             date_str=f"{cur_date[:5]}({dk})"
             found=False
-            for i,txt in enumerate(col_t):
-                sm=re.match(r'^(\d+):(\d+)$',txt)
+            # 스코어 파싱: X:Y 형식 (X,Y 모두 두자리 이하 숫자)
+            for i,orig in enumerate(col_o):
+                sm=re.match(r'^(\d{1,2}):(\d{1,2})$',orig)
                 if not sm or i==0 or i>=len(col_t)-1: continue
                 away,home=col_t[i-1],col_t[i+1]
                 if away not in VALID_TEAMS or home not in VALID_TEAMS: continue
@@ -317,10 +318,13 @@ def get_kia_schedule_eng():
                 res_='win' if ks>os_ else ('lose' if ks<os_ else 'draw')
                 games.append({"date":date_str,"opp":f"vs {op}","score":f"{ks}-{os_}","result":res_,"venue":vt})
                 found=True; break
+            # 예정 경기: HH:MM 시간 형식
             if not found:
                 for i,orig in enumerate(col_o):
-                    if not re.match(r'^\d{2}:\d{2}$',orig): continue
-                    if i==0 or i>=len(col_t)-1: continue
+                    tm=re.match(r'^(\d{2}):(\d{2})$',orig)
+                    if not tm or i==0 or i>=len(col_t)-1: continue
+                    h_,m_=int(tm.group(1)),int(tm.group(2))
+                    if h_ < 10 or h_ > 23: continue  # 경기 시간은 10~23시
                     away,home=col_t[i-1],col_t[i+1]
                     if away not in VALID_TEAMS or home not in VALID_TEAMS: continue
                     if 'KIA' not in away and 'KIA' not in home: continue
@@ -328,12 +332,13 @@ def get_kia_schedule_eng():
                     else: oe,vt=away,'홈'
                     op_kor=TEAM_ENG_KOR.get(oe,oe)
                     op_short=op_kor.split(' ')[0]
-                    h,m_=map(int,orig.split(':'))
-                    fdt=datetime(now.year,mo,da,h,m_)
-                    fdt_str=fdt.strftime('%Y-%m-%dT%H:%M:%S')
-                    if next_game is None and fdt>=now:
-                        next_game={"date":fdt_str,"opponent":op_kor,"venue":"광주","home":True}
-                    games.append({"date":date_str,"opp":f"vs {op_short}","score":orig,"result":"upcoming","venue":"홈","fullDate":fdt_str})
+                    try:
+                        fdt=datetime(now.year,mo,da,h_,m_)
+                        fdt_str=fdt.strftime('%Y-%m-%dT%H:%M:%S')
+                        if next_game is None and fdt>=now:
+                            next_game={"date":fdt_str,"opponent":op_kor,"venue":"광주","home":vt=='홈'}
+                        games.append({"date":date_str,"opp":f"vs {op_short}","score":orig,"result":"upcoming","venue":vt,"fullDate":fdt_str})
+                    except: pass
                     break
         return games, next_game
     except Exception as e:
