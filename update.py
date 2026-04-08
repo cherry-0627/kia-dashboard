@@ -200,6 +200,144 @@ def get_standings():
     except Exception as e: print(f"standings error: {e}"); return []
 
 def get_kia_schedule():
+    """KBO 한국어 사이트에서 이번달 KIA 경기 일정 파싱"""
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    
+    # 월별 일정 URL
+    url = f"https://www.koreabaseball.com/Schedule/Schedule.aspx"
+    
+    games = []
+    next_game = None
+    
+    try:
+        res = requests.get(url, headers=HEADERS, timeout=15)
+        soup = BeautifulSoup(res.text, "html.parser")
+        
+        # 일정 테이블 찾기
+        tables = soup.select("table.tbl")
+        if not tables:
+            tables = soup.select("table")
+        
+        DAY_KOR = {'월':'월','화':'화','수':'수','목':'목','금':'금','토':'토','일':'일'}
+        TEAM_SHORT = {
+            'KIA':'KIA','LG':'LG','삼성':'삼성','한화':'한화','SSG':'SSG',
+            'NC':'NC','KT':'KT','롯데':'롯데','두산':'두산','키움':'키움'
+        }
+        
+        cur_month = now.month
+        cur_year = now.year
+        
+        for table in tables:
+            rows = table.select("tr")
+            cur_date_str = ""
+            cur_day = None
+            
+            for row in rows:
+                cols = row.select("td, th")
+                if not cols: continue
+                
+                row_text = row.get_text()
+                
+                # 날짜 행 감지 (숫자로 시작하는 경우)
+                first = cols[0].get_text(strip=True)
+                
+                # KIA 포함 행 파싱
+                if 'KIA' not in row_text: continue
+                
+                # 각 컬럼에서 팀명과 스코어 찾기
+                texts = [c.get_text(strip=True) for c in cols]
+                
+                # 날짜 파싱
+                for t in texts:
+                    import re
+                    dm = re.match(r'(\d+)\.(\d+)\((.)\)', t)
+                    if dm:
+                        cur_day = (int(dm.group(1)), int(dm.group(2)), dm.group(3))
+                        break
+                
+                if not cur_day: continue
+                mo, da, dw = cur_day
+                date_str = f"{mo:02d}.{da:02d}({dw})"
+                
+                # 스코어 또는 시간 찾기
+                score_found = False
+                for i, t in enumerate(texts):
+                    # 결과 스코어: 숫자:숫자
+                    sm = re.match(r'^(\d+):(\d+)$', t)
+                    if sm and i > 0 and i < len(texts)-1:
+                        # KIA가 홈인지 원정인지
+                        away_text = texts[i-1] if i > 0 else ''
+                        home_text = texts[i+1] if i < len(texts)-1 else ''
+                        
+                        if 'KIA' in away_text:
+                            ks, os_ = int(sm.group(1)), int(sm.group(2))
+                            opp = home_text.replace('KIA','').strip()
+                            vt = '원정'
+                        elif 'KIA' in home_text:
+                            os_, ks = int(sm.group(1)), int(sm.group(2))
+                            opp = away_text.replace('KIA','').strip()
+                            vt = '홈'
+                        else:
+                            continue
+                        
+                        result = 'win' if ks > os_ else ('lose' if ks < os_ else 'draw')
+                        games.append({
+                            "date": date_str,
+                            "opp": f"vs {opp[:2]}",
+                            "score": f"{ks}-{os_}",
+                            "result": result,
+                            "venue": vt
+                        })
+                        score_found = True
+                        break
+                    
+                    # 예정 시간: HH:MM
+                    tm = re.match(r'^(\d{2}):(\d{2})$', t)
+                    if tm and not score_found:
+                        h, m = int(tm.group(1)), int(tm.group(2))
+                        
+                        # KIA 상대팀 찾기
+                        opp = ''
+                        vt = '홈'
+                        for j, tt in enumerate(texts):
+                            if 'KIA' in tt and j != i:
+                                # 반대편이 상대
+                                other_idx = i-1 if j > i else i+1
+                                if 0 <= other_idx < len(texts):
+                                    opp = texts[other_idx].replace('KIA','').strip()[:2]
+                                break
+                        
+                        try:
+                            fdt = datetime(cur_year, mo, da, h, m)
+                            fdt_str = fdt.strftime('%Y-%m-%dT%H:%M:%S')
+                            if next_game is None and fdt >= now:
+                                next_game = {"date": fdt_str, "opponent": opp or '?', "venue": "광주", "home": True}
+                            games.append({
+                                "date": date_str,
+                                "opp": f"vs {opp}",
+                                "score": f"{h:02d}:{m:02d}",
+                                "result": "upcoming",
+                                "venue": "홈",
+                                "fullDate": fdt_str
+                            })
+                        except:
+                            pass
+                        break
+        
+        print(f"KIA 경기: {len(games)}경기")
+        
+    except Exception as e:
+        print(f"schedule error: {e}")
+    
+    # 파싱 실패시 영문 사이트 폴백
+    if len(games) == 0:
+        return get_kia_schedule_eng()
+    
+    return games, next_game
+
+def get_kia_schedule_eng():
+    """영문 사이트 폴백"""
     try:
         res=requests.get("https://eng.koreabaseball.com/Schedule/DailySchedule.aspx",headers=HEADERS,timeout=15)
         soup=BeautifulSoup(res.text,"html.parser")
@@ -245,21 +383,18 @@ def get_kia_schedule():
                     else: oe,vt=away,'홈'
                     op_kor=TEAM_ENG_KOR.get(oe,oe)
                     op_short=op_kor.split(' ')[0]
-                    vname=vt
-                    for ct in col_o:
-                        v=VENUE_MAP.get(ct.upper(),'')
-                        if v: vname=v; break
                     h,m_=map(int,orig.split(':'))
                     fdt=datetime(now.year,mo,da,h,m_)
                     fdt_str=fdt.strftime('%Y-%m-%dT%H:%M:%S')
                     if next_game is None and fdt>=now:
-                        next_game={"date":fdt_str,"opponent":op_kor,"venue":vname,"home":vt=='홈'}
-                    games.append({"date":date_str,"opp":f"vs {op_short}","score":orig,"result":"upcoming","venue":vname,"fullDate":fdt_str})
+                        next_game={"date":fdt_str,"opponent":op_kor,"venue":"광주","home":True}
+                    games.append({"date":date_str,"opp":f"vs {op_short}","score":orig,"result":"upcoming","venue":"홈","fullDate":fdt_str})
                     break
-        print(f"KIA 경기: {len(games)}경기")
-        if next_game: print(f"다음 경기: {next_game['date']} vs {next_game['opponent']}")
-        return games,next_game
-    except Exception as e: print(f"schedule error: {e}"); return [],None
+        return games, next_game
+    except Exception as e:
+        print(f"eng schedule error: {e}")
+        return [], None
+
 
 def fetch_hitter(name, info):
     """선수 개인 페이지에서 타격 기록 조회"""
