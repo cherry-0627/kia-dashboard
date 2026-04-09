@@ -31,8 +31,8 @@ HITTER_INFO = {
     '오선우':   {'num':'56','pos':'1루수',   'pid':'69636'},
     '박재현':   {'num':'15','pos':'외야수',  'pid':'55636'},
     '김호령':   {'num':'18','pos':'중견수',  'pid':'65653'},
-    '한준수':   {'num':'27','pos':'포수',    'pid':'52430'},
-    '윤도현':   {'num':'99','pos':'내야수',  'pid':'67610'},
+    '한준수':   {'num':'55','pos':'포수',    'pid':'68646'},
+    '윤도현':   {'num':'44','pos':'내야수',  'pid':'52667'},
     '박상준':   {'num':'41','pos':'외야수',  'pid':'68012'},
     '고종욱':   {'num':'30','pos':'외야수',  'pid':'51460'},
     '김규성':   {'num':'25','pos':'내야수',  'pid':'67107'},
@@ -42,7 +42,7 @@ HITTER_INFO = {
 }
 PITCHER_INFO = {
     '네일':   {'num':'47','pos':'선발','pid':'54640'},
-    '올러':   {'num':'49','pos':'선발','pid':'54642'},
+    '올러':   {'num':'49','pos':'선발','pid':'55633'},
     '양현종': {'num':'11','pos':'선발','pid':'62401'},
     '이의리': {'num':'35','pos':'선발','pid':'51648'},
     '김태형': {'num':'17','pos':'선발','pid':'77637'},
@@ -412,7 +412,7 @@ def fetch_hitter(name, info):
             for row in table.select("tr"):
                 cols = row.select("td")
                 if len(cols) < 10: continue
-                if cols[0].get_text(strip=True) != 'KIA': continue
+                if cols[0].get_text(strip=True) not in ['KIA', 'KIA 타이거즈']: continue
                 try:
                     ar = cols[1].get_text(strip=True)
                     avg = safe_avg(ar)
@@ -464,7 +464,7 @@ def fetch_pitcher(name, info):
             for row in table.select("tr"):
                 cols = row.select("td")
                 if len(cols) < 10: continue
-                if cols[0].get_text(strip=True) != 'KIA': continue
+                if cols[0].get_text(strip=True) not in ['KIA', 'KIA 타이거즈']: continue
                 # 투수: 팀(0) ERA(1) G(2) W(3) L(4) SV(5) HLD(6) WPCT(7) IP(8) H(9) HR(10) BB(11) HBP(12) SO(13) R(14) ER(15) WHIP(16)
                 return {
                     "era":  cols[1].get_text(strip=True) or '-',
@@ -696,9 +696,9 @@ def build_html(standings, games, next_game, hitters, pitchers, batters=None, top
             except: return 0
         all_hitter_names = sorted(hitters.keys(), key=avg_sort)
         fav_names = [n for n in ['오선우','박재현'] if n in HITTER_INFO]
-        main_names = [n for n in all_hitter_names if n not in fav_names]
+        main_names = [n for n in all_hitter_names if n not in fav_names and n in hitters]
         
-        main_h = [mh(n, hitters[n], HITTER_INFO.get(n, {'num':'-','pos':'-','pid':''})) for n in main_names if n in hitters]
+        main_h = [mh(n, hitters[n], HITTER_INFO.get(n, {'num':'-','pos':'-','pid':''})) for n in main_names]
         fav_h  = [mh(n, hitters[n], HITTER_INFO.get(n, {'num':'-','pos':'-','pid':''})) if n in hitters else me(n, HITTER_INFO.get(n, {'num':'-','pos':'-','pid':''})) for n in fav_names]
         html=replace_in_regular(html,'kiaHitters',json.dumps(main_h,ensure_ascii=False))
         html=replace_in_regular(html,'kiaFavHitters',json.dumps(fav_h,ensure_ascii=False))
@@ -711,9 +711,9 @@ def build_html(standings, games, next_game, hitters, pitchers, batters=None, top
             except: return 99.99
         all_pitcher_names = sorted(pitchers.keys(), key=era_sort)
         fav_p_names = [n for n in ['최지민'] if n in PITCHER_INFO]
-        main_p_names = [n for n in all_pitcher_names if n not in fav_p_names]
+        main_p_names = [n for n in all_pitcher_names if n not in fav_p_names and n in pitchers]
         
-        main_p = [mp(n, pitchers[n], PITCHER_INFO.get(n, {'num':'-','pos':'투수','pid':''})) for n in main_p_names if n in pitchers]
+        main_p = [mp(n, pitchers[n], PITCHER_INFO.get(n, {'num':'-','pos':'투수','pid':''})) for n in main_p_names]
         fav_p  = [mp(n, pitchers[n], PITCHER_INFO.get(n, {'num':'-','pos':'불펜','pid':''})) if n in pitchers else mpe(n, PITCHER_INFO.get(n, {'num':'-','pos':'불펜','pid':''})) for n in fav_p_names]
         html=replace_in_regular(html,'kiaPitchers',json.dumps(main_p,ensure_ascii=False))
         html=replace_in_regular(html,'kiaFavPitchers',json.dumps(fav_p,ensure_ascii=False))
