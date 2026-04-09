@@ -340,7 +340,8 @@ def get_kia_schedule_eng():
                         games.append({"date":date_str,"opp":f"vs {op_short}","score":orig,"result":"upcoming","venue":vt,"fullDate":fdt_str})
                     except: pass
                     break
-        print(f"영문 KIA 경기: {len(games)}경기, 예정: {len([g for g in games if g["result"]=="upcoming"])}경기")
+        upcoming_cnt = len([g for g in games if g.get("result")=="upcoming"])
+        print(f"영문 KIA 경기: {len(games)}경기, 예정: {upcoming_cnt}경기")
         return games, next_game
     except Exception as e:
         print(f"eng schedule error: {e}")
