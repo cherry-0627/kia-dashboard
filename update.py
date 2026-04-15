@@ -510,8 +510,8 @@ def build_html(standings, games, next_game, hitters, pitchers, batters, top_pitc
         if ks: html=replace_in_regular(html,'kiaStats',json.dumps(ks,ensure_ascii=False))
 
     if games:
-        done=[g for g in games if g['result']!='upcoming'][-10:]
-        upcoming=[g for g in games if g['result']=='upcoming'][:3]
+        done=[g for g in games if g['result']!='upcoming'][-5:]
+        upcoming=[g for g in games if g['result']=='upcoming'][:5]
         html=replace_in_regular(html,'recentGames',json.dumps(done+upcoming,ensure_ascii=False))
         # nextGame: 인수로 받은 게 없으면 upcoming 첫 번째에서 생성
         if not next_game and upcoming:
