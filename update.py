@@ -339,36 +339,123 @@ def _scrape_monthly_schedule(year, month, now, games, next_game_ref):
         return False
 
 def get_kia_schedule():
-    now=datetime.now()
-    games=[]; next_game_ref=[None]
-    try:
-        # 1) DailySchedule (당일 결과)
-        res=requests.get("https://eng.koreabaseball.com/Schedule/DailySchedule.aspx",headers=HEADERS,timeout=15)
-        soup=BeautifulSoup(res.text,"html.parser")
-        tables=soup.select("table")
-        print(f"  DailySchedule 테이블: {len(tables)}개")
-        if tables:
-            _parse_schedule_table(tables[0],now,games,next_game_ref)
-    except Exception as e:
-        print(f"  DailySchedule 오류: {e}")
+    """GetScheduleList API로 KIA 경기 수집 (완료+예정, 실제 시간 포함)"""
+    import json as _json
+    from bs4 import BeautifulSoup as _BS
+    DAY_KOR = ['월','화','수','목','금','토','일']
+    KOR_FULL = {
+        'KIA':'KIA 타이거즈','LG':'LG 트윈스','삼성':'삼성 라이온즈','한화':'한화 이글스',
+        'SSG':'SSG 랜더스','NC':'NC 다이노스','KT':'KT 위즈','롯데':'롯데 자이언츠',
+        '두산':'두산 베어스','키움':'키움 히어로즈'
+    }
+    now = datetime.now()
+    games = []; next_game = None
 
-    # 2) 이번달 + 다음달 월간 스케줄 (예정 경기 포함)
-    _scrape_monthly_schedule(now.year, now.month, now, games, next_game_ref)
-    next_m = now.month+1 if now.month<12 else 1
-    next_y = now.year if now.month<12 else now.year+1
-    _scrape_monthly_schedule(next_y, next_m, now, games, next_game_ref)
+    for year, month in [
+        (now.year, now.month),
+        (now.year if now.month < 12 else now.year+1, now.month+1 if now.month < 12 else 1)
+    ]:
+        try:
+            res = requests.post(
+                "https://www.koreabaseball.com/ws/Schedule.asmx/GetScheduleList",
+                headers={**HEADERS,
+                         'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
+                         'X-Requested-With':'XMLHttpRequest'},
+                data={'leId':'1','srIdList':'0,9,6','seasonId':str(year),
+                      'gameMonth':f'{month:02d}','teamId':'HT'},
+                timeout=15
+            )
+            if res.status_code != 200:
+                print(f"  스케줄 API 오류: {res.status_code} ({year}{month:02d})")
+                continue
 
-    # 날짜 순 정렬 (done 먼저, upcoming 뒤)
-    done_games    = [g for g in games if g.get('result')!='upcoming']
-    upcoming_games= sorted(
-        [g for g in games if g.get('result')=='upcoming'],
-        key=lambda g: g.get('fullDate','')
-    )
-    games = done_games + upcoming_games
+            data = _json.loads(res.text)
+            added = 0
+            for row_obj in data.get('rows', []):
+                cells = row_obj.get('row', [])
+                # 셀을 class로 매핑
+                cell_map = {}
+                none_cells = []
+                for c in cells:
+                    cls = c.get('Class') or ''
+                    if cls:
+                        cell_map[cls] = c.get('Text','')
+                    else:
+                        none_cells.append(c.get('Text',''))
 
-    upcoming=[g for g in games if g.get('result')=='upcoming']
+                day_txt  = cell_map.get('day','')    # "04.15(수)"
+                time_txt = cell_map.get('time','')   # "<b>18:30</b>"
+                play_txt = cell_map.get('play','')   # "<span>KIA</span>..."
+                # 구장은 None 셀 중 2번째 (index 1)
+                stadium  = none_cells[1] if len(none_cells) > 1 else ''
+
+                if not day_txt or not play_txt: continue
+
+                # 날짜 파싱: "04.15(수)"
+                dm = re.match(r'(\d{2})\.(\d{2})\(', day_txt)
+                if not dm: continue
+                mo, da = int(dm.group(1)), int(dm.group(2))
+
+                # 시간 파싱: "<b>18:30</b>"
+                tm = re.search(r'(\d{2}):(\d{2})', time_txt)
+                h_, m_ = (int(tm.group(1)), int(tm.group(2))) if tm else (18, 30)
+
+                try:
+                    fdt = datetime(year, mo, da, h_, m_)
+                    fdt_str = fdt.strftime('%Y-%m-%dT%H:%M:%S')
+                    dow = DAY_KOR[fdt.weekday()]
+                    date_str = f"{mo:02d}.{da:02d}({dow})"
+                except:
+                    continue
+
+                # 팀/점수 파싱
+                soup = _BS(play_txt, 'html.parser')
+                spans = soup.find_all('span')
+                if len(spans) < 2: continue
+                team_away = spans[0].get_text(strip=True)
+                team_home = spans[-1].get_text(strip=True)
+                is_home = team_home == 'KIA'
+                opp_short = team_away if is_home else team_home
+                opp_full  = KOR_FULL.get(opp_short, opp_short)
+                vt = '홈' if is_home else '원정'
+
+                # 점수: win/lose class가 있으면 완료, 없으면 예정
+                score_spans = soup.select('em span[class]')
+                has_score = any(s.get('class',[''])[0] in ('win','lose') for s in score_spans)
+
+                # 우천취소 체크
+                bigo = none_cells[2] if len(none_cells) > 2 else ''
+                if '취소' in bigo or '우천' in bigo:
+                    continue  # 취소 경기 제외
+
+                if has_score:
+                    nums = [s.get_text(strip=True) for s in score_spans
+                            if s.get_text(strip=True).isdigit()]
+                    if len(nums) < 2: continue
+                    s_away, s_home = int(nums[0]), int(nums[1])
+                    ks  = s_home if is_home else s_away
+                    os_ = s_away if is_home else s_home
+                    games.append({"date":date_str,"opp":f"vs {opp_short}",
+                                  "score":f"{ks}-{os_}",
+                                  "result":'win' if ks>os_ else('lose' if ks<os_ else 'draw'),
+                                  "venue":vt})
+                else:
+                    time_disp = f"{h_:02d}:{m_:02d}"
+                    if next_game is None and fdt >= now:
+                        next_game = {"date":fdt_str,"opponent":opp_full,
+                                     "venue":stadium,"home":is_home}
+                    games.append({"date":date_str,"opp":f"vs {opp_short}",
+                                  "score":time_disp,"result":"upcoming",
+                                  "venue":vt,"fullDate":fdt_str})
+                added += 1
+
+            print(f"  스케줄({year}{month:02d}): {added}경기 추가")
+        except Exception as e:
+            print(f"  스케줄 오류 ({year}{month:02d}): {e}")
+
+    upcoming = [g for g in games if g.get('result')=='upcoming']
     print(f"KIA 경기: {len(games)}경기, 예정: {len(upcoming)}경기")
-    return games, next_game_ref[0]
+    return games, next_game
 
 def get_top_batters():
     try:
