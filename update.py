@@ -218,12 +218,20 @@ def _parse_schedule_table(table, now, games, next_game_ref):
                 break
 
 def _scrape_monthly_schedule(year, month, now, games, next_game_ref):
-    """KBO Ajax API로 월간 KIA 경기 수집"""
-    TEAM_CODE = {
-        'HT':'KIA','LG':'LG','SS':'SAMSUNG','HH':'HANWHA',
-        'SK':'SSG','NC':'NC','KT':'KT','LT':'LOTTE','OB':'DOOSAN','WO':'KIWOOM'
-    }
+    """KBO GetMonthSchedule API로 월간 KIA 경기 수집"""
+    import json as _json
+    from bs4 import BeautifulSoup as _BS
     DAY_KOR = ['월','화','수','목','금','토','일']
+    # KBO 한글팀명 → 짧은이름 매핑
+    KOR_SHORT = {
+        'KIA':'KIA','LG':'LG','삼성':'삼성','한화':'한화',
+        'SSG':'SSG','NC':'NC','KT':'KT','롯데':'롯데','두산':'두산','키움':'키움'
+    }
+    KOR_FULL = {
+        'KIA':'KIA 타이거즈','LG':'LG 트윈스','삼성':'삼성 라이온즈','한화':'한화 이글스',
+        'SSG':'SSG 랜더스','NC':'NC 다이노스','KT':'KT 위즈','롯데':'롯데 자이언츠',
+        '두산':'두산 베어스','키움':'키움 히어로즈'
+    }
     try:
         res = requests.post(
             "https://www.koreabaseball.com/ws/Schedule.asmx/GetMonthSchedule",
@@ -236,54 +244,93 @@ def _scrape_monthly_schedule(year, month, now, games, next_game_ref):
             print(f"  월간스케줄 API 오류: {res.status_code}")
             return False
 
-        import xml.etree.ElementTree as ET
-        root = ET.fromstring(res.text)
-        rows = root.findall('.//row')
-        if not rows:
-            rows = root.findall('.//Row')
-        if not rows:
-            print(f"  월간스케줄 XML 태그: {[c.tag for c in list(root)][:5]}")
-            return False
-
+        data = _json.loads(res.text)
         before = len(games)
-        for row in rows:
-            def gv(tag): return (row.findtext(tag) or '').strip()
-            home_code = gv('home_nm') or gv('homeTeamId') or gv('HOME_NM')
-            away_code = gv('away_nm') or gv('awayTeamId') or gv('AWAY_NM')
-            if 'HT' not in (home_code+away_code).upper() and 'KIA' not in (home_code+away_code).upper():
-                continue
-            gdate = gv('gameDate') or gv('GAME_DATE') or gv('g_date')
-            gtime = gv('gameTime') or gv('GAME_TIME') or gv('g_time')
-            score_h = gv('homeScore') or gv('HOME_SCORE') or gv('hscore')
-            score_a = gv('awayScore') or gv('AWAY_SCORE') or gv('ascore')
-            try:
-                mo,da = int(gdate[4:6]), int(gdate[6:8])
-                h_, m_ = int(gtime[:2]), int(gtime[2:])
-                fdt = datetime(year, mo, da, h_, m_)
-                fdt_str = fdt.strftime('%Y-%m-%dT%H:%M:%S')
-                dow = DAY_KOR[fdt.weekday()]
-                date_str = f"{mo:02d}.{da:02d}({dow})"
-            except:
-                continue
-            hc = home_code.upper(); ac = away_code.upper()
-            home_kor = TEAM_ENG_KOR.get(TEAM_CODE.get(hc, hc), home_code)
-            away_kor = TEAM_ENG_KOR.get(TEAM_CODE.get(ac, ac), away_code)
-            is_home = 'HT' in hc or 'KIA' in hc
-            opp_kor = away_kor if is_home else home_kor
-            opp_short = opp_kor.split(' ')[0]
-            vt = '홈' if is_home else '원정'
-            if any(g2['date']==date_str and g2['opp']==f"vs {opp_short}" for g2 in games):
-                continue
-            if score_h and score_a and score_h.isdigit() and score_a.isdigit():
-                ks = int(score_h) if is_home else int(score_a)
-                os_ = int(score_a) if is_home else int(score_h)
-                games.append({"date":date_str,"opp":f"vs {opp_short}","score":f"{ks}-{os_}",
-                              "result":'win' if ks>os_ else('lose' if ks<os_ else 'draw'),"venue":vt})
-            else:
-                if next_game_ref[0] is None and fdt >= now:
-                    next_game_ref[0] = {"date":fdt_str,"opponent":opp_kor,"venue":"","home":is_home}
-                games.append({"date":date_str,"opp":f"vs {opp_short}",
-                              "score":gtime[:2]+':'+gtime[2:],"result":"upcoming","venue":vt,"fullDate":fdt_str})
+
+        for row_obj in data.get('rows', []):
+            for cell in row_obj.get('row', []):
+                html = cell.get('Text', '')
+                cls  = cell.get('Class', '') or ''
+                if not html or 'KIA' not in html:
+                    continue
+                soup = _BS(html, 'html.parser')
+
+                # 날짜 추출
+                day_tag = soup.find('li', class_='dayNum')
+                if not day_tag: continue
+                try:
+                    da = int(day_tag.get_text(strip=True))
+                    fdt_base = datetime(year, month, da)
+                    dow = DAY_KOR[fdt_base.weekday()]
+                    date_str = f"{month:02d}.{da:02d}({dow})"
+                except:
+                    continue
+
+                # ── 완료 경기 (endGame) ──
+                if 'endGame' in cls:
+                    # gameId에서 팀코드 추출: 20260401HTLG0
+                    a_tag = soup.find('a', href=True)
+                    if not a_tag: continue
+                    href = a_tag['href']
+                    gm = re.search(r'gameId=(\d{8})([A-Z]{2})([A-Z]{2})\d', href)
+                    if not gm: continue
+                    away_code, home_code = gm.group(2), gm.group(3)
+                    is_home = home_code == 'HT'
+                    opp_code = away_code if is_home else home_code
+                    # 점수
+                    b_tag = soup.find('b')
+                    if not b_tag: continue
+                    score_txt = b_tag.get_text(strip=True)  # "2 : 7"
+                    sm = re.match(r'(\d+)\s*:\s*(\d+)', score_txt)
+                    if not sm: continue
+                    s1, s2 = int(sm.group(1)), int(sm.group(2))
+                    # gameId의 점수는 away:home 순
+                    ks  = s2 if is_home else s1
+                    os_ = s1 if is_home else s2
+                    # 상대팀 한글
+                    eng2kor = {'HT':'KIA','LG':'LG','SS':'삼성','HH':'한화',
+                               'SK':'SSG','NC':'NC','KT':'KT','LT':'롯데','OB':'두산','WO':'키움'}
+                    opp_short = eng2kor.get(opp_code, opp_code)
+                    vt = '홈' if is_home else '원정'
+                    if any(g2['date']==date_str and g2['opp']==f"vs {opp_short}" for g2 in games):
+                        continue
+                    games.append({"date":date_str,"opp":f"vs {opp_short}",
+                                  "score":f"{ks}-{os_}",
+                                  "result":'win' if ks>os_ else('lose' if ks<os_ else 'draw'),
+                                  "venue":vt})
+
+                # ── 예정 경기 (todayGame 또는 빈 class) ──
+                else:
+                    # <li>키움 : KIA [광주]</li> 형태
+                    for li in soup.find_all('li'):
+                        if li.get('class'): continue  # dayNum 등 스킵
+                        txt = li.get_text(strip=True)
+                        # "팀A : 팀B [구장]"
+                        m2 = re.match(r'(.+?)\s*:\s*(.+?)\s*\[(.+?)\]', txt)
+                        if not m2: continue
+                        team_a, team_b = m2.group(1).strip(), m2.group(2).strip()
+                        stadium = m2.group(3).strip()
+                        if 'KIA' not in (team_a + team_b): continue
+                        is_home = team_b == 'KIA'
+                        opp_short = team_a if is_home else team_b
+                        opp_full  = KOR_FULL.get(opp_short, opp_short)
+                        vt = '홈' if is_home else '원정'
+                        # 시작시간 기본 18:30
+                        try:
+                            fdt = datetime(year, month, da, 18, 30)
+                            fdt_str = fdt.strftime('%Y-%m-%dT%H:%M:%S')
+                        except:
+                            continue
+                        if any(g2['date']==date_str and g2['opp']==f"vs {opp_short}" for g2 in games):
+                            continue
+                        if next_game_ref[0] is None and fdt >= now:
+                            next_game_ref[0] = {"date":fdt_str,"opponent":opp_full,
+                                                "venue":stadium,"home":is_home}
+                        games.append({"date":date_str,"opp":f"vs {opp_short}",
+                                      "score":"18:30","result":"upcoming",
+                                      "venue":vt,"fullDate":fdt_str})
+                        break
+
         added = len(games) - before
         print(f"  월간스케줄({year}{month:02d}): {added}경기 추가")
         return added > 0
