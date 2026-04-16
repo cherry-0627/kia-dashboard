@@ -40,6 +40,11 @@ PLAYER_INFO = {
 }
 FAV_HITTERS = ['오선우','박재현']
 FAV_PITCHERS = ['최지민']
+FAV_PLAYER_IDS = {
+    '오선우': ('hitter', '69636'),
+    '박재현': ('hitter', '55636'),
+    '최지민': ('pitcher', '52639'),
+}
 
 def safe_int(s):
     try: return int(float(str(s).strip()) if s else 0)
@@ -140,6 +145,67 @@ def scrape_basicold_pages(base_url, is_hitter=True):
     except Exception as e:
         print(f"  scrape 오류: {e}")
     return result
+
+def fetch_fav_player(name, kind, pid):
+    """즐겨찾기 선수 개인 상세 페이지에서 시즌 스탯 수집"""
+    try:
+        path = 'HitterDetail' if kind == 'hitter' else 'PitcherDetail'
+        url = f"https://www.koreabaseball.com/Record/Player/{path}/Basic.aspx?playerId={pid}"
+        res = requests.get(url, headers=HEADERS, timeout=15)
+        soup = BeautifulSoup(res.text, "html.parser")
+        tables = soup.select("table")
+        if not tables: return None
+        if kind == 'hitter':
+            # 테이블0: AVG PA AB R H HR RBI BB SO SLG OBP OPS
+            row = tables[0].select("tr")
+            stat_row = row[1].select("td") if len(row) > 1 else []
+            # 테이블1: BB IBB HBP SO GDP SLG OBP E ... OPS
+            row1 = tables[1].select("tr")
+            stat_row1 = row1[1].select("td") if len(row1) > 1 else []
+            def g(r, i): return r[i].get_text(strip=True) if len(r) > i else '-'
+            return {
+                'pid': pid,
+                'avg': safe_avg(g(stat_row, 1)),
+                'pa':  safe_int(g(stat_row, 3)),
+                'ab':  safe_int(g(stat_row, 4)),
+                'r':   safe_int(g(stat_row, 5)),
+                'h':   safe_int(g(stat_row, 6)),
+                'hr':  safe_int(g(stat_row, 9)),
+                'rbi': safe_int(g(stat_row, 11)),
+                'bb':  safe_int(g(stat_row1, 0)),
+                'so':  safe_int(g(stat_row1, 3)),
+                'slg': g(stat_row1, 5),
+                'obp': g(stat_row1, 6),
+                'ops': g(stat_row1, 10),
+            }
+        else:
+            # 투수 테이블0: 팀 ERA W L SV HLD IP H BB SO WHIP
+            row = tables[0].select("tr")
+            stat_row = row[1].select("td") if len(row) > 1 else []
+            def g(r, i): return r[i].get_text(strip=True) if len(r) > i else '-'
+            ip = g(stat_row, 6)
+            h  = safe_int(g(stat_row, 7))
+            bb = safe_int(g(stat_row, 8))
+            try:
+                ip_f = float(ip.replace(' 1/3','.33').replace(' 2/3','.67'))
+                whip = f"{(h+bb)/ip_f:.2f}" if ip_f > 0 else '-'
+            except: whip = '-'
+            return {
+                'pid': pid,
+                'era': g(stat_row, 1),
+                'w':   safe_int(g(stat_row, 2)),
+                'l':   safe_int(g(stat_row, 3)),
+                'sv':  safe_int(g(stat_row, 4)),
+                'hld': safe_int(g(stat_row, 5)),
+                'ip':  ip,
+                'h':   h,
+                'bb':  bb,
+                'k':   safe_int(g(stat_row, 9)),
+                'whip': whip,
+            }
+    except Exception as e:
+        print(f"  {name} 스탯 오류: {e}")
+        return None
 
 def get_standings():
     try:
@@ -615,8 +681,14 @@ def build_html(standings, games, next_game, hitters, pitchers, batters, top_pitc
         fav_names=['오선우','박재현']
         all_sorted=sorted(hitters.keys(), key=lambda n: -float(hitters[n].get('avg','-').replace('.','') or 0) if hitters[n].get('avg','-')!='-' else 0)
         main_h=[make_hitter(n,hitters[n]) for n in all_sorted if n not in fav_names]
-        fav_h =[make_hitter(n,hitters[n]) for n in fav_names if n in hitters]
         html=replace_in_regular(html,'kiaHitters',json.dumps(main_h,ensure_ascii=False))
+        # 즐겨찾기 타자: 개인 상세 페이지에서 직접 수집
+        fav_h=[]
+        for name in fav_names:
+            kind, pid = FAV_PLAYER_IDS.get(name, (None, None))
+            if not pid: continue
+            d = fetch_fav_player(name, kind, pid)
+            if d: fav_h.append(make_hitter(name, d))
         html=replace_in_regular(html,'kiaFavHitters',json.dumps(fav_h,ensure_ascii=False))
 
     if pitchers:
@@ -626,8 +698,14 @@ def build_html(standings, games, next_game, hitters, pitchers, batters, top_pitc
             except: return 99.0
         all_sorted=sorted(pitchers.keys(), key=era_key)
         main_p=[make_pitcher(n,pitchers[n]) for n in all_sorted if n not in fav_names]
-        fav_p =[make_pitcher(n,pitchers[n]) for n in fav_names if n in pitchers]
         html=replace_in_regular(html,'kiaPitchers',json.dumps(main_p,ensure_ascii=False))
+        # 즐겨찾기 투수: 개인 상세 페이지에서 직접 수집
+        fav_p=[]
+        for name in fav_names:
+            kind, pid = FAV_PLAYER_IDS.get(name, (None, None))
+            if not pid: continue
+            d = fetch_fav_player(name, kind, pid)
+            if d: fav_p.append(make_pitcher(name, d))
         html=replace_in_regular(html,'kiaFavPitchers',json.dumps(fav_p,ensure_ascii=False))
 
     if batters:
