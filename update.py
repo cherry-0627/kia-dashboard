@@ -439,9 +439,9 @@ def get_kia_schedule():
                 score_spans = soup.select('em span[class]')
                 has_score = any(s.get('class',[''])[0] in ('win','lose') for s in score_spans)
 
-                # 우천취소 체크
-                bigo = none_cells[2] if len(none_cells) > 2 else ''
-                if '취소' in bigo or '우천' in bigo:
+                # 우천취소 체크 (none_cells 전체에서 검색)
+                bigo_all = ' '.join(none_cells)
+                if '취소' in bigo_all or '우천' in bigo_all:
                     continue  # 취소 경기 제외
 
                 if has_score:
