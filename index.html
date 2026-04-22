@@ -263,6 +263,13 @@ function renderResults(){
     </div>`).join('');
 }
 
+function posGroup(pos) {
+  if (!pos) return pos;
+  if (pos === '포수') return '포수';
+  if (['내야수','1루수','2루수','3루수','유격수'].includes(pos)) return '내야수';
+  if (['외야수','좌익수','중견수','우익수','지명타자'].includes(pos)) return '외야수';
+  return pos;
+}
 function renderKiaStats(){
   const s = getData().kiaStats;
   document.getElementById('s-rank').textContent = s.rank;
@@ -332,7 +339,7 @@ function renderPlayerStats(){
       <thead><tr><th style="min-width:60px">선수</th><th>포지션</th><th>타율</th><th>타석</th><th>타수</th><th>안타</th><th>득점</th><th>타점</th><th>HR</th><th>볼넷</th><th>출루율</th><th>OPS</th></tr></thead>
       <tbody>${list.map(p=>`<tr>
         <td style="color:var(--kia-red);font-weight:500;white-space:nowrap">${p.name}<br><span style="color:var(--muted);font-size:10px;font-weight:400">#${p.num}</span></td>
-        <td style="color:var(--muted);font-size:11px">${p.pos}</td>
+        <td style="color:var(--muted);font-size:11px">${posGroup(p.pos)}</td>
         <td><strong>${p.avg}</strong></td><td>${p.pa||0}</td><td>${p.ab||0}</td><td>${p.h||0}</td>
         <td>${p.r||0}</td><td>${p.rbi||0}</td><td>${p.hr||0}</td><td>${p.bb||0}</td>
         <td>${p.obp||'-'}</td><td style="color:#fbbf24">${p.ops||'-'}</td></tr>`).join('')}
@@ -344,7 +351,7 @@ function renderPlayerStats(){
       <thead><tr><th style="min-width:60px">선수</th><th>포지션</th><th>ERA</th><th>승</th><th>패</th><th>세이브</th><th>홀드</th><th>이닝</th><th>삼진</th><th>볼넷</th><th>WHIP</th></tr></thead>
       <tbody>${list.map(p=>`<tr>
         <td style="color:var(--kia-red);font-weight:500;white-space:nowrap">${p.name}<br><span style="color:var(--muted);font-size:10px;font-weight:400">#${p.num}</span></td>
-        <td style="color:var(--muted);font-size:11px">${p.pos}</td>
+        <td style="color:var(--muted);font-size:11px">${posGroup(p.pos)}</td>
         <td><strong>${p.era}</strong></td><td>${p.w}</td><td>${p.l}</td><td>${p.sv}</td>
         <td>${p.hld||0}</td><td>${p.ip||'-'}</td><td>${p.k||0}</td><td>${p.bb||0}</td>
         <td style="color:#fbbf24">${p.whip}</td></tr>`).join('')}
@@ -369,7 +376,7 @@ function renderFavStats(){
       <thead><tr><th style="min-width:60px">선수</th><th>포지션</th><th>타율</th><th>타석</th><th>타수</th><th>안타</th><th>득점</th><th>타점</th><th>HR</th><th>볼넷</th><th>출루율</th><th>OPS</th></tr></thead>
       <tbody>${list.map(p=>`<tr>
         <td style="color:var(--kia-red);font-weight:500;white-space:nowrap">${p.name}<br><span style="color:var(--muted);font-size:10px;font-weight:400">#${p.num}</span></td>
-        <td style="color:var(--muted);font-size:11px">${p.pos}</td>
+        <td style="color:var(--muted);font-size:11px">${posGroup(p.pos)}</td>
         <td><strong>${p.avg}</strong></td><td>${p.pa||0}</td><td>${p.ab||0}</td><td>${p.h||0}</td>
         <td>${p.r||0}</td><td>${p.rbi||0}</td><td>${p.hr||0}</td><td>${p.bb||0}</td>
         <td>${p.obp||'-'}</td><td style="color:#fbbf24">${p.ops||'-'}</td></tr>`).join('')}
@@ -381,7 +388,7 @@ function renderFavStats(){
       <thead><tr><th style="min-width:60px">선수</th><th>포지션</th><th>ERA</th><th>승</th><th>패</th><th>세이브</th><th>홀드</th><th>이닝</th><th>삼진</th><th>볼넷</th><th>WHIP</th></tr></thead>
       <tbody>${list.map(p=>`<tr>
         <td style="color:var(--kia-red);font-weight:500;white-space:nowrap">${p.name}<br><span style="color:var(--muted);font-size:10px;font-weight:400">#${p.num}</span></td>
-        <td style="color:var(--muted);font-size:11px">${p.pos}</td>
+        <td style="color:var(--muted);font-size:11px">${posGroup(p.pos)}</td>
         <td><strong>${p.era}</strong></td><td>${p.w}</td><td>${p.l}</td><td>${p.sv}</td>
         <td>${p.hld||0}</td><td>${p.ip||'-'}</td><td>${p.k||0}</td><td>${p.bb||0}</td>
         <td style="color:#fbbf24">${p.whip}</td></tr>`).join('')}
