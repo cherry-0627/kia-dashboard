@@ -647,7 +647,7 @@ def build_html(standings, games, next_game, hitters, pitchers, batters, top_pitc
             try: return float(pitchers[n].get('era','99'))
             except: return 99.0
         all_sorted=sorted(pitchers.keys(), key=era_key)
-        main_p=[make_pitcher(n,pitchers[n]) for n in all_sorted if n not in fav_names]
+        main_p=[make_pitcher(n,pitchers[n]) for n in all_sorted if n not in fav_names][:10]
         html=replace_in_regular(html,'kiaPitchers',json.dumps(main_p,ensure_ascii=False))
         # 즐겨찾기 투수: 개인 상세 페이지에서 직접 수집
         fav_p=[]
