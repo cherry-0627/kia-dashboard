@@ -40,6 +40,24 @@ PLAYER_INFO = {
 }
 FAV_HITTERS = ['오선우','박재현']
 FAV_PITCHERS = ['최지민']
+FAV_PLAYER_IDS = {
+    '오선우': ('hitter', '69636'),
+    '박재현': ('hitter', '55636'),
+    '최지민': ('pitcher', '52639'),
+}
+KIA_HITTER_IDS = {
+    '카스트로': '56626', '나성범': '62947', '김선빈': '78603', '김도영': '52605',
+    '데일':    '56632', '박민':  '50657', '오선우': '69636', '박재현': '55636',
+    '김호령':  '65653', '한준수': '68646', '윤도현': '52667', '박상준': '52634',
+    '고종욱':  '61353', '김규성': '66614', '이창진': '64560', '박정우': '67609',
+    '김태군':  '78122',
+}
+KIA_PITCHER_IDS = {
+    '네일':   '54640', '올러':   '55633', '양현종': '77637', '이의리': '51648',
+    '김태형': '55610', '최지민': '52639', '성영탁': '54610', '이태양': '60768',
+    '조상우': '63342', '김범수': '65769', '김기훈': '69620', '정해영': '50662',
+    '김시훈': '68928', '전상현': '66609', '홍민규': '55267', '황동하': '52641',
+}
 
 def safe_int(s):
     try: return int(float(str(s).strip()) if s else 0)
@@ -51,95 +69,91 @@ def safe_avg(s):
         return f".{int(f*1000):03d}" if f < 1 else f"{f:.3f}"
     except: return '-'
 
-def scrape_basicold_pages(base_url, is_hitter=True):
-    """BasicOld에서 KIA 선수 전체 데이터 수집 (모든 페이지)"""
-    result = {}
+def get_jersey_num(soup):
+    """선수 상세 페이지에서 등번호 자동 추출"""
+    for li in soup.find_all('li'):
+        m = re.search(r'등번호:No\.(\d+)', li.get_text(strip=True))
+        if m:
+            return m.group(1)
+    return None
+
+def fetch_fav_player(name, kind, pid):
     try:
-        res = requests.get(base_url, headers=HEADERS, timeout=15)
+        path = 'HitterDetail' if kind == 'hitter' else 'PitcherDetail'
+        url = f"https://www.koreabaseball.com/Record/Player/{path}/Basic.aspx?playerId={pid}"
+        res = requests.get(url, headers=HEADERS, timeout=15)
         soup = BeautifulSoup(res.text, "html.parser")
-        vs = soup.find('input', {'id': '__VIEWSTATE'})
-        ev = soup.find('input', {'id': '__EVENTVALIDATION'})
-        viewstate = vs['value'] if vs else ''
-        eventval  = ev['value'] if ev else ''
-
-        def parse_page(s):
-            table = s.select_one("table")
-            if not table: return
-            for row in table.select("tr"):
-                cols = row.select("td")
-                if len(cols) < 5: continue
-                team = cols[2].get_text(strip=True)
-                if team != 'KIA': continue
-                name = cols[1].get_text(strip=True)
-                a = row.select_one("a[href*='playerId']")
-                pid = re.search(r'playerId=(\d+)', a['href']).group(1) if a else ''
-                if is_hitter:
-                    result[name] = {
-                        'pid': pid,
-                        'avg': safe_avg(cols[3].get_text(strip=True)),
-                        'pa':  safe_int(cols[5].get_text(strip=True)),
-                        'ab':  safe_int(cols[6].get_text(strip=True)),
-                        'h':   safe_int(cols[7].get_text(strip=True)),
-                        'hr':  safe_int(cols[10].get_text(strip=True)) if len(cols)>10 else 0,
-                        'rbi': safe_int(cols[11].get_text(strip=True)) if len(cols)>11 else 0,
-                        'bb':  safe_int(cols[14].get_text(strip=True)) if len(cols)>14 else 0,
-                        'so':  safe_int(cols[16].get_text(strip=True)) if len(cols)>16 else 0,
-                        'r':   0, 'obp':'-', 'slg':'-', 'ops':'-',
-                    }
-                else:
-                    ip = cols[13].get_text(strip=True) if len(cols)>13 else '0'
-                    h  = safe_int(cols[14].get_text(strip=True)) if len(cols)>14 else 0
-                    bb = safe_int(cols[16].get_text(strip=True)) if len(cols)>16 else 0
-                    try:
-                        ip_f = float(ip.replace(' 1/3','.33').replace(' 2/3','.67'))
-                        whip = f"{(h+bb)/ip_f:.2f}" if ip_f > 0 else '-'
-                    except: whip = '-'
-                    result[name] = {
-                        'pid': pid,
-                        'era': cols[3].get_text(strip=True) or '-',
-                        'w':   safe_int(cols[7].get_text(strip=True)) if len(cols)>7 else 0,
-                        'l':   safe_int(cols[8].get_text(strip=True)) if len(cols)>8 else 0,
-                        'sv':  safe_int(cols[9].get_text(strip=True)) if len(cols)>9 else 0,
-                        'hld': safe_int(cols[10].get_text(strip=True)) if len(cols)>10 else 0,
-                        'ip':  ip,
-                        'h':   h, 'bb': bb,
-                        'k':   safe_int(cols[18].get_text(strip=True)) if len(cols)>18 else 0,
-                        'whip': whip,
-                    }
-
-        parse_page(soup)
-
-        # 페이지 수 확인
-        max_page = 1
-        for a in soup.find_all(href=True):
-            m = re.search(r'btnNo(\d+)', a.get('href',''))
-            if m: max_page = max(max_page, int(m.group(1)))
-        for tag in soup.find_all(onclick=True):
-            m = re.search(r'btnNo(\d+)', tag.get('onclick',''))
-            if m: max_page = max(max_page, int(m.group(1)))
-
-        for page in range(2, max_page+1):
-            try:
-                r2 = requests.post(base_url,
-                    headers={**HEADERS, 'Content-Type':'application/x-www-form-urlencoded'},
-                    data={
-                        '__VIEWSTATE': viewstate,
-                        '__EVENTVALIDATION': eventval,
-                        '__EVENTTARGET': f'ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ucPager$btnNo{page}',
-                        '__EVENTARGUMENT': '',
-                    }, timeout=15)
-                s2 = BeautifulSoup(r2.text, 'html.parser')
-                parse_page(s2)
-                vs2 = s2.find('input', {'id':'__VIEWSTATE'})
-                ev2 = s2.find('input', {'id':'__EVENTVALIDATION'})
-                if vs2: viewstate = vs2['value']
-                if ev2: eventval  = ev2['value']
-            except Exception as e:
-                print(f"  페이지{page} 오류: {e}"); break
-
+        tables = soup.select("table")
+        if not tables: return None
+        # 등번호 자동 업데이트
+        num = get_jersey_num(soup)
+        if num and name in PLAYER_INFO:
+            PLAYER_INFO[name]['num'] = num
+        if kind == 'hitter':
+            row = tables[0].select("tr")
+            stat_row = row[1].select("td") if len(row) > 1 else []
+            row1 = tables[1].select("tr") if len(tables) > 1 else []
+            stat_row1 = row1[1].select("td") if len(row1) > 1 else []
+            def g(r, i): return r[i].get_text(strip=True) if len(r) > i else '-'
+            return {
+                'pid': pid,
+                'avg': safe_avg(g(stat_row, 1)),
+                'pa':  safe_int(g(stat_row, 3)),
+                'ab':  safe_int(g(stat_row, 4)),
+                'r':   safe_int(g(stat_row, 5)),
+                'h':   safe_int(g(stat_row, 6)),
+                'hr':  safe_int(g(stat_row, 9)),
+                'rbi': safe_int(g(stat_row, 11)),
+                'bb':  safe_int(g(stat_row1, 0)),
+                'so':  safe_int(g(stat_row1, 3)),
+                'slg': g(stat_row1, 5),
+                'obp': g(stat_row1, 6),
+                'ops': g(stat_row1, 10),
+            }
+        else:
+            row0 = tables[0].select("tr")
+            row1 = tables[1].select("tr") if len(tables) > 1 else []
+            s0 = row0[1].select("td") if len(row0) > 1 else []
+            s1 = row1[1].select("td") if len(row1) > 1 else []
+            def g(r, i): return r[i].get_text(strip=True) if len(r) > i else '-'
+            return {
+                'pid': pid,
+                'era': g(s0, 1),
+                'w':   safe_int(g(s0, 5)),
+                'l':   safe_int(g(s0, 6)),
+                'sv':  safe_int(g(s0, 7)),
+                'hld': safe_int(g(s0, 8)),
+                'ip':  g(s0, 12),
+                'h':   safe_int(g(s0, 13)),
+                'bb':  safe_int(g(s1, 2)),
+                'k':   safe_int(g(s1, 4)),
+                'whip': g(s1, 10),
+            }
     except Exception as e:
-        print(f"  scrape 오류: {e}")
+        print(f"  {name} 스탯 오류: {e}")
+        return None
+
+def scrape_kia_hitters():
+    result = {}
+    for name, pid in KIA_HITTER_IDS.items():
+        d = fetch_fav_player(name, 'hitter', pid)
+        if d:
+            result[name] = d
+    print(f"KIA 타자 수집: {len(result)}명")
     return result
+
+def scrape_kia_pitchers():
+    result = {}
+    for name, pid in KIA_PITCHER_IDS.items():
+        d = fetch_fav_player(name, 'pitcher', pid)
+        if d:
+            result[name] = d
+    print(f"KIA 투수 수집: {len(result)}명")
+    return result
+
+def scrape_basicold_pages(base_url, is_hitter=True):
+    if is_hitter: return scrape_kia_hitters()
+    else: return scrape_kia_pitchers()
 
 def get_standings():
     try:
@@ -369,9 +383,14 @@ def build_html(standings, games, next_game, hitters, pitchers, batters, top_pitc
     if hitters:
         fav_names=['오선우','박재현']
         all_sorted=sorted(hitters.keys(), key=lambda n: -float(hitters[n].get('avg','-').replace('.','') or 0) if hitters[n].get('avg','-')!='-' else 0)
-        main_h=[make_hitter(n,hitters[n]) for n in all_sorted if n not in fav_names]
-        fav_h =[make_hitter(n,hitters[n]) for n in fav_names if n in hitters]
+        main_h=[make_hitter(n,hitters[n]) for n in all_sorted if n not in fav_names][:10]
         html=replace_in_regular(html,'kiaHitters',json.dumps(main_h,ensure_ascii=False))
+        fav_h=[]
+        for name in fav_names:
+            kind, pid = FAV_PLAYER_IDS.get(name, (None, None))
+            if not pid: continue
+            d = fetch_fav_player(name, kind, pid)
+            if d: fav_h.append(make_hitter(name, d))
         html=replace_in_regular(html,'kiaFavHitters',json.dumps(fav_h,ensure_ascii=False))
 
     if pitchers:
@@ -380,9 +399,14 @@ def build_html(standings, games, next_game, hitters, pitchers, batters, top_pitc
             try: return float(pitchers[n].get('era','99'))
             except: return 99.0
         all_sorted=sorted(pitchers.keys(), key=era_key)
-        main_p=[make_pitcher(n,pitchers[n]) for n in all_sorted if n not in fav_names]
-        fav_p =[make_pitcher(n,pitchers[n]) for n in fav_names if n in pitchers]
+        main_p=[make_pitcher(n,pitchers[n]) for n in all_sorted if n not in fav_names][:10]
         html=replace_in_regular(html,'kiaPitchers',json.dumps(main_p,ensure_ascii=False))
+        fav_p=[]
+        for name in fav_names:
+            kind, pid = FAV_PLAYER_IDS.get(name, (None, None))
+            if not pid: continue
+            d = fetch_fav_player(name, kind, pid)
+            if d: fav_p.append(make_pitcher(name, d))
         html=replace_in_regular(html,'kiaFavPitchers',json.dumps(fav_p,ensure_ascii=False))
 
     if batters:
@@ -404,13 +428,11 @@ if __name__=="__main__":
     games,next_game= get_kia_schedule()
 
     print("KIA 타자 수집 중...")
-    hitters = scrape_basicold_pages(
-        "https://www.koreabaseball.com/Record/Player/HitterBasic/BasicOld.aspx", True)
+    hitters = scrape_kia_hitters()
     print(f"KIA 타자: {len(hitters)}명 - {list(hitters.keys())}")
 
     print("KIA 투수 수집 중...")
-    pitchers = scrape_basicold_pages(
-        "https://www.koreabaseball.com/Record/Player/PitcherBasic/BasicOld.aspx", False)
+    pitchers = scrape_kia_pitchers()
     print(f"KIA 투수: {len(pitchers)}명 - {list(pitchers.keys())}")
 
     batters     = get_top_batters()
